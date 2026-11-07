@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Groundtruth map actions",
+  "type": "array",
+  "items": {
+    "oneOf": [
+      {"type":"object","properties":{"action":{"const":"fly_to"},"bbox":{"type":"array","items":{"type":"number"},"minItems":4,"maxItems":4},"label":{"type":"string"},"approximate":{"type":"boolean"}},"required":["action","bbox","label"],"additionalProperties":false},
+      {"type":"object","properties":{"action":{"const":"add_layer"},"layer_id":{"type":"string"},"source":{"const":"envelope"},"envelope_ref":{"type":"string","pattern":"^step_[1-8]$"},"style":{"type":"string"}},"required":["action","layer_id","source","envelope_ref"],"additionalProperties":false},
+      {"type":"object","properties":{"action":{"enum":["show_candidates","show_metrics","offer_download"]},"envelope_ref":{"type":"string","pattern":"^step_[1-8]$"},"format":{"enum":["csv","geojson","pdf"]}},"required":["action","envelope_ref"],"additionalProperties":false},
+      {"type":"object","properties":{"action":{"const":"add_results"},"layer_id":{"type":"string"},"envelope_ref":{"type":"string","pattern":"^step_[1-8]$"},"style":{"type":"string"}},"required":["action","layer_id","envelope_ref"],"additionalProperties":false},
+      {"type":"object","properties":{"action":{"const":"set_filter"},"layer_id":{"type":"string"},"envelope_ref":{"type":"string","pattern":"^step_[1-8]$"}},"required":["action","layer_id","envelope_ref"],"additionalProperties":false},
+      {"type":"object","properties":{"action":{"const":"say"},"text":{"type":"string"}},"required":["action","text"],"additionalProperties":false}
+    ]
+  }
+}

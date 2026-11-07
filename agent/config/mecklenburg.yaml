@@ -1,0 +1,20 @@
+{
+  "county": "Mecklenburg County, NC",
+  "bbox": [-81.06, 34.82, -80.55, 35.52],
+  "places": {
+    "uptown": {"bbox": [-80.856, 35.215, -80.828, 35.239], "approximate": true},
+    "ballantyne": {"bbox": [-80.86, 35.04, -80.79, 35.08], "approximate": true},
+    "south end": {"bbox": [-80.871, 35.194, -80.842, 35.222], "approximate": true},
+    "noda": {"bbox": [-80.822, 35.239, -80.785, 35.278], "approximate": true},
+    "university city": {"bbox": [-80.76, 35.282, -80.71, 35.33], "approximate": true},
+    "unc charlotte": {"bbox": [-80.746, 35.298, -80.72, 35.316], "approximate": true},
+    "lake norman": {"bbox": [-80.99, 35.39, -80.81, 35.51], "approximate": true},
+    "charlotte douglas airport": {"bbox": [-80.956, 35.202, -80.921, 35.233], "approximate": true},
+    "matthews": {"bbox": [-80.753, 35.089, -80.683, 35.15], "approximate": true},
+    "mint hill": {"bbox": [-80.689, 35.151, -80.63, 35.213], "approximate": true},
+    "pineville": {"bbox": [-80.911, 35.069, -80.865, 35.106], "approximate": true},
+    "huntersville": {"bbox": [-80.902, 35.382, -80.784, 35.464], "approximate": true},
+    "cornelius": {"bbox": [-80.914, 35.45, -80.831, 35.502], "approximate": true},
+    "davidson": {"bbox": [-80.864, 35.485, -80.803, 35.528], "approximate": true}
+  }
+}
