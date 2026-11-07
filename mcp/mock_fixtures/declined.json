@@ -1,0 +1,1 @@
+{"tool":"people_data_request","version":"0.1.0","status":"declined","result":null,"confidence":1.0,"method":"Groundtruth people-data safety policy","assumptions":[],"limits":["Groundtruth does not identify people, residents, homeowners, or property owners."],"sources":[],"steps":[],"declined_reason":"people_data"}

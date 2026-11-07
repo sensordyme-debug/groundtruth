@@ -4,6 +4,7 @@ Times are local (America/New_York).
 
 | time | milestone |
 |---|---|
+| 2026-11-07 15:20 | Donovan: Recovered the mock MCP server and map agent from the mistakenly used repository into `donovan/mcp-agent`; aligned MCP input names with the published contract. Nine mock MCP tools list and call over stdio; 22 offline MCP and agent tests pass. Live HTTP routing awaits contract details. |
 | 2026-11-07 14:09 | Start. Repo foundation: MIT licence, CLAUDE.md rules, envelope + DataProvider interface, docs skeleton. |
 | 2026-11-07 14:12 | Mecklenburg boundary fetched (Census TIGERweb, 1,413.18 km²). NAIP coverage check on Planetary Computer: full-county years 2022, 2020, 2018, 2016, 2014, 2012 → primary 2022, secondary 2020 (both 0.6 m). |
 | 2026-11-07 14:34 | Working slice: UNC Charlotte AOI, 342 chips (NAIP 2022, 2 scenes), DINOv2 + OpenCLIP + FAISS. CPU throughput 4.4 chips/s (8 threads). Remote windowed COG reads were 265 s per AOI, so we switched to a whole-scene download (~10 MB/s with 16 streams). |

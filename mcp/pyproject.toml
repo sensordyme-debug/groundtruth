@@ -1,0 +1,27 @@
+[project]
+name = "groundtruth-mcp"
+version = "0.1.0"
+description = "Groundtruth MCP server for geospatial search"
+requires-python = ">=3.11"
+dependencies = [
+  "httpx>=0.27,<1",
+  "mcp[cli]>=1.12,<2",
+  "pydantic>=2.7,<3",
+]
+
+[project.scripts]
+groundtruth-mcp = "mcp_server.server:main"
+
+[dependency-groups]
+dev = ["pytest>=8,<9", "pytest-asyncio>=0.24,<2", "respx>=0.21,<1"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["../tests/mcp"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["mcp_server"]

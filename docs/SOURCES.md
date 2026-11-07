@@ -54,3 +54,5 @@ Every dataset and model Groundtruth uses. One-line summary per item for sign-off
 | DuckDB (+ spatial, httpfs extensions) | MIT |
 | pyarrow | Apache-2.0 |
 | pyosmium (`osmium`) | BSD-2 |
+| MCP Python SDK (`mcp`), Hatchling | MIT / MIT |
+| pytest-asyncio, respx, jsonschema (Donovan test tooling) | Apache-2.0 / MIT / MIT |
