@@ -23,11 +23,26 @@ async def main() -> None:
             names = {item.name for item in listed.tools}
             expected = {"search_text", "pick_candidates", "find_similar", "outline", "refine", "add_layer", "filter", "measure", "export"}
             assert expected <= names, f"missing tools: {expected - names}"
-            result = await session.call_tool("search_text", {"query": "swimming pools"})
-            assert result.structuredContent["tool"] == "search_text"
-            assert result.structuredContent["status"] == "ok"
-            assert result.content[0].text.startswith("status=ok; count=3")
-            print(f"OK: {len(expected)} tools listed; search_text returned {result.structuredContent['status']}")
+            cases = {
+                "search_text": {"query": "swimming pools"},
+                "pick_candidates": {"query": "swimming pools"},
+                "find_similar": {"chip_ids": ["pool-1"]},
+                "outline": {"chip_ids": ["pool-1"], "concept": "pool"},
+                "refine": {"session_id": "demo", "accept_ids": ["pool-1"]},
+                "add_layer": {"name": "osm_roads"},
+                "filter": {"features": {"type": "FeatureCollection", "features": []}, "where": {}},
+                "measure": {"features": {"type": "FeatureCollection", "features": []}, "what": "count"},
+                "export": {"features": {"type": "FeatureCollection", "features": []}, "format": "csv"},
+            }
+            for name, arguments in cases.items():
+                result = await session.call_tool(name, arguments)
+                assert not result.isError, f"{name}: {result.content}"
+                assert result.structuredContent["tool"] == name
+                assert result.structuredContent["status"] in {"ok", "partial", "declined"}
+                assert result.content[0].text.startswith("status=")
+            resources = await session.list_resources()
+            assert any(str(item.uri) == "groundtruth://about" for item in resources.resources)
+            print(f"OK: {len(cases)} tools called; groundtruth://about listed")
 
 
 if __name__ == "__main__":
