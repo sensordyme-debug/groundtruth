@@ -1,5 +1,5 @@
 // Client side of sessions / saved areas / pins (api/sessions.py) + per-browser preferences (localStorage, guarded).
-export type SessionRow = { id: string; title: string; created: number; updated: number };
+export type SessionRow = { id: string; title: string; created: number; updated: number; status?: string | null; scope?: string | null };
 export type SavedArea = { id: string; name: string; geometry: any; created: number };
 export type Pin = { id: string; session_id: string; msg_id: string; title: string; created: number };
 export type Area = { label: string; place?: string; bbox?: number[]; geojson?: any } | null;
@@ -42,7 +42,8 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
 }
 
 export const api = {
-  sessions: (limit = 20) => call<{ sessions: SessionRow[]; total: number }>("GET", `/sessions?limit=${limit}`),
+  sessions: (limit = 20, q = "") => call<{ sessions: SessionRow[]; total: number }>("GET", `/sessions?limit=${limit}&q=${encodeURIComponent(q)}`),
+  investigations: () => call<{ investigations: any[] }>("GET", "/investigations"),
   session: (id: string) => call<SessionRow & { data: any }>("GET", `/sessions/${id}`),
   create: (title: string, data: any) => call<SessionRow>("POST", "/sessions", { title, data }),
   patch: (id: string, p: { title?: string; data?: any }) => call<{ id: string }>("PATCH", `/sessions/${id}`, p),

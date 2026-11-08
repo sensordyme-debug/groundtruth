@@ -588,7 +588,7 @@ def _exec(s: PlanStep, eng, src, inv: Investigation, envs, feats):
         dq = q.get("has_dock" if "has_dock" in a.require else "lakefront" if "lakefront" in a.require else "house_with_pool", {})
         _add_ev(inv, s, "detection", f"{m.get('pools_in_place')} pools were detected in imagery across {a.place}; "
                 f"{m.get('of_houses_with_pools')} sit next to a residential building.",
-                source=_src(env, "NAIP"), method="DINOv2 patch search + dense colour blobs + verifier (size, colour, lidar height)",
+                source=_imagery_src(eng, env), method="DINOv2 patch search + dense colour blobs + verifier (size, colour, lidar height)",
                 measurement={"pools_detected": m.get("pools_in_place"), "homes_with_pools": m.get("of_houses_with_pools")},
                 feature_ids=[], strength=_model_strength(dq), confidence_note=_dq_note(dq),
                 limitations=["Exhaustive scan of the area's imagery, but recall is not guaranteed: a pool under trees or "
@@ -865,7 +865,8 @@ def _summary(inv: Investigation) -> str:
         return "I couldn't establish anything here; see the steps for what was missing."
     head = f[0].statement
     gaps = [x for x in f if x.nature == "gap"]
-    return head + (f" {len(gaps)} gap{'s' if len(gaps) != 1 else ''} in the data are listed below." if gaps else "")
+    return head + ((" 1 gap in the data is listed below." if len(gaps) == 1 else f" {len(gaps)} gaps in the data are listed below.")
+                   if gaps else "")
 
 
 def _why_strength(e: Evidence) -> str:
@@ -891,6 +892,14 @@ def _dq_note(dq: dict[str, Any]) -> str:
 
 def _add_ev(inv: Investigation, s: PlanStep, kind: str, statement: str, **kw) -> None:
     inv.evidence.append(Evidence(id=f"e{len(inv.evidence) + 1}", step_id=s.id, kind=kind, statement=statement, **kw))
+
+
+def _imagery_src(eng, env) -> dict[str, Any]:
+    """The NAIP scene source for detections (from the envelope, else the provider's own source list)."""
+    for x in list(getattr(env, "sources", []) or []) + list(getattr(eng.provider, "sources", lambda: [])() or []):
+        if "naip" in x.name.lower() and "2022" in (x.name + x.date):
+            return x.model_dump()
+    return {"name": "NAIP 2022 (USDA)", "url": "", "date": "2022", "licence": "Public domain"}
 
 
 def _src(env, prefer: str) -> dict[str, Any]:

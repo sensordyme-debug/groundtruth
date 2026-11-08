@@ -5,9 +5,11 @@ import { Crosshair, Link2, Menu, MoreHorizontal, Pencil, Pin as PinIcon, Trash2 
 import { AgentResponse, Context, cropUrl, exportSet, Feature, agentRun, Envelope } from "./api";
 import { GtMap, focusGeom, COUNTY, geomBbox } from "./map";
 import { Card, StepLine, bboxAround, cardFor, centroid, currentEnv, featId, fmt, pillsFor, sayText, stepLines, scrub } from "./turns";
-import Sidebar from "./Sidebar";
+import Sidebar, { ReportRow, Seg } from "./Sidebar";
+import NavRail, { View } from "./NavRail";
+import InvestigationBlock, { Inv, InvEvidence, Bars } from "./Investigation";
 import Composer, { ComposerHandle, DrawKind, tagsFor } from "./Composer";
-import { Area, Mode, Pin, Prefs, SavedArea, SessionRow, Year, api, loadPrefs, ruleTitle, savePrefs, units } from "./store";
+import { Area, Mode, Pin, Prefs, SavedArea, SessionRow, Year, api, loadPrefs, owner as ownerFn, ruleTitle, savePrefs, units } from "./store";
 import * as I from "./icons";
 
 type Tile = { id: string; label: string; img: string };
@@ -16,18 +18,18 @@ type Req = { kind: "agent"; text: string; ctx: Context } | { kind: "point"; posi
 type UserMsg = { id: string; role: "user"; text: string; tags?: string[]; thumb?: string };
 type AsstMsg = { id: string; role: "assistant"; text: string; steps: StepLine[]; secs: string; card: Card | null; pills: string[];
   pick?: Tile[]; query?: string; showDetails?: boolean; req?: Req; learn?: string; nameable?: boolean; named?: string;
-  limits?: string[]; insights?: string[]; pointIds?: { examples: string[]; negatives: string[] } };
+  limits?: string[]; insights?: string[]; pointIds?: { examples: string[]; negatives: string[] }; inv?: Inv };
 type Msg = UserMsg | { id: string; role: "working" } | AsstMsg;
 type Shown = { ids: Set<string>; features: Feature[]; docks: Feature[]; links: Feature[] };
 
 const LANDING_BG = "/v2assets/landing.webp"; // NAIP 2022, Lake Norman shore, pre-rendered (scripts/build_landing_bg.py)
 const STARTERS = [
-  { img: "/v2assets/card_lakefront.webp", title: "Lakefront homes with pools and docks", sub: "Lake Norman, every home checked",
-    run: { text: "Lakefront homes with pools and docks in Lake Norman" } },
+  { img: "/v2assets/card_flood.webp", title: "Flood exposure of homes with pools", sub: "Lake Norman · FEMA zones, lidar, evidence",
+    run: { text: "Find residential properties near Lake Norman with swimming pools that intersect mapped 100-year flood zones. Rank the strongest candidates and tell me where data is missing." } },
   { img: "/v2assets/card_point.webp", title: "Click anything to find all like it", sub: "No labels: it learns from your clicks",
     run: { point: true } },
-  { img: "/v2assets/card_flood.webp", title: "Flood exposure for lakefront homes", sub: "FEMA flood zones, shoreline, elevation",
-    run: { text: "flood exposure for lakefront homes" } },
+  { img: "/v2assets/card_lakefront.webp", title: "Lakefront homes with pools and docks", sub: "Lake Norman, every home checked",
+    run: { text: "Lakefront homes with pools and docks in Lake Norman" } },
 ] as const;
 const LN_BBOX = [-80.958699, 35.427332, -80.844396, 35.514785];
 let uid = 0;
@@ -39,6 +41,13 @@ export default function App() {
   const setPrefs = (p: Prefs) => { setPrefsState(p); savePrefs(p); };
   const [narrow, setNarrow] = useState(() => innerWidth < 900);
   const [drawer, setDrawer] = useState(false);
+  const [view, setView] = useState<View>("investigations");
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [reports, setReports] = useState<ReportRow[]>([]);
+  const [query, setQuery] = useState("");
+  const [evOpen, setEvOpen] = useState<InvEvidence | null>(null);
+  const [selEv, setSelEv] = useState<any | null>(null);
+  const pollRef = useRef<{ id: string; stop: boolean } | null>(null);
   const [sessions, setSessions] = useState<SessionRow[]>([]);
   const [total, setTotal] = useState(0);
   const [limit, setLimit] = useState(20);
@@ -93,11 +102,12 @@ export default function App() {
 
   // ---------- boot ----------
   const refreshLists = useCallback(() => {
-    api.sessions(limit).then((r) => { setSessions(r.sessions); setTotal(r.total); }).catch(() => {});
+    api.sessions(limit, query).then((r) => { setSessions(r.sessions); setTotal(r.total); }).catch(() => {});
+    api.investigations().then((r) => setReports(r.investigations.filter((x: ReportRow) => x.status !== "needs_input"))).catch(() => {});
     api.areas().then((r) => setAreas(r.areas)).catch(() => {});
     api.pins().then((r) => setPins(r.pins)).catch(() => {});
-  }, [limit]);
-  useEffect(() => { refreshLists(); }, [refreshLists]);
+  }, [limit, query]);
+  useEffect(() => { const t = setTimeout(refreshLists, 150); return () => clearTimeout(t); }, [refreshLists]);
   useEffect(() => {
     fetch("/api/v1/places").then((r) => r.json()).then((d) => setPlaces(d.places ?? {})).catch(() => {});
     if (!mapEl.current || gm.current) return;
@@ -279,7 +289,8 @@ export default function App() {
     if (!sid || restoring.current) return;
     const t = setTimeout(() => {
       const data = {
-        v: 1, msgs: msgs.filter((m) => m.role !== "working").map(slimMsg), ctx, area, cyear, mode, picked, nots, pickDone,
+        v: 2, msgs: msgs.filter((m) => m.role !== "working").map(slimMsg), ctx, area, cyear, mode, picked, nots, pickDone,
+        status: lastInv(msgs)?.status ?? "search", scope: lastInv(msgs)?.plan?.scope?.label ?? area?.label ?? (ctx.place || null),
         point: point.current, map: { camera: gm.current?.camera(), year, layers: lyr, sel: sel ? featId(sel) : null },
       };
       api.patch(sid, { title, data }).then(refreshLists).catch(() => {});
@@ -311,6 +322,11 @@ export default function App() {
     for (const k of ["flood", "hwy", "bldg3d"] as const) void gm.current?.setLayer(k, !!(mp.layers ?? {})[k]);
     // re-hydrate result sets from the engine caches: re-run each stored request, in order, without camera moves
     for (const m of ms) {
+      if (m.role === "assistant" && m.inv) {
+        const inv = await fetchInv(m.inv.id, true);
+        if (inv) { setMsgs((x) => x.map((y) => (y.id === m.id && y.role === "assistant" ? { ...y, inv, card: invCard(inv) } : y))); applyInv(inv, false); }
+        continue;
+      }
       if (m.role !== "assistant" || !m.req || (!m.card && !m.pick)) continue;
       if (m.req.kind === "agent") await runAgent(m.req.text, m.req.ctx, m.id, { fly: false, quiet: true });
       else await runPoint(m.req, m.id, { fly: false, quiet: true });
@@ -350,11 +366,93 @@ export default function App() {
     const c = fullCtx(first ? { place: null, last_text: null } : {});
     setTimeout(() => void gm.current?.startImagery(), 150); // after the chat request has a connection
     void ensureSession(text);
-    await runAgent(text, c);
-  }, [busy, stage, area, cyear, mode, fullCtx, runAgent, ensureSession]);
+    const prev = first ? null : lastInv(msgs);
+    const started = await startInvestigation(text, { area: c.area, year: c.year, mode: c.mode, rejected: c.rejected ?? [],
+      previous: prev && ["done", "partial"].includes(prev.status) ? prev.id : undefined });
+    if (started === "chat") await runAgent(text, c);
+  }, [busy, stage, area, cyear, mode, fullCtx, runAgent, ensureSession, msgs]);
+
+  // ---------- investigations: start, then poll the real record until it finishes ----------
+  const startInvestigation = useCallback(async (objective: string, context: Record<string, any>): Promise<"chat" | "inv" | "error"> => {
+    t0.current = performance.now();
+    let r: any;
+    try {
+      r = await fetch("/api/v1/investigations", { method: "POST", headers: { "Content-Type": "application/json", "X-GT-Owner": ownerId() },
+        body: JSON.stringify({ objective, context }) }).then((x) => x.json());
+    } catch { return "chat"; }
+    if (r.fallback === "chat") return "chat";
+    if (!r.id) return "chat";
+    const msgId = nextId("a");
+    const inv: Inv = r;
+    setMsgs((ms) => ms.filter((x) => x.role !== "working").concat([{ id: msgId, role: "assistant", text: "", steps: [], secs: "0.0",
+      card: null, pills: [], inv }]));
+    if (title === "New search" && inv.status !== "declined") retitle(invTitle(objective, inv));
+    if (["running", "planning"].includes(inv.status)) await pollInv(inv.id, msgId);
+    else { setBusy(false); (window as any).__gtLast = { ms: Math.round(performance.now() - t0.current), status: inv.status, kind: "investigation", id: inv.id }; }
+    return "inv";
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [title]);
+
+  const pollInv = useCallback(async (id: string, msgId: string) => {
+    const me = { id, stop: false };
+    pollRef.current = me;
+    let firstFeatures = false;
+    for (;;) {
+      await new Promise((res) => setTimeout(res, 300));
+      if (me.stop) break;
+      const inv = await fetchInv(id, false);
+      if (!inv) continue;
+      setMsgs((ms) => ms.map((x) => (x.id === msgId && x.role === "assistant" ? { ...x, inv: { ...inv, result: x.inv?.result ?? inv.result } } : x)));
+      if (!firstFeatures && inv.plan?.steps.some((s) => s.op.startsWith("find") && s.status === "done")) {
+        firstFeatures = true;
+        (window as any).__gtFirst = Math.round(performance.now() - t0.current);
+      }
+      if (!["running", "planning"].includes(inv.status)) {
+        const full = await fetchInv(id, true);
+        if (full) {
+          setMsgs((ms) => ms.map((x) => (x.id === msgId && x.role === "assistant" ? { ...x, inv: full, card: invCard(full) } : x)));
+          applyInv(full, true);
+          (window as any).__gtLast = { ms: Math.round(performance.now() - t0.current), first_ms: (window as any).__gtFirst ?? null,
+            status: full.status, kind: "investigation", id, count: invCard(full)?.count ?? null };
+        }
+        break;
+      }
+    }
+    if (pollRef.current === me) pollRef.current = null;
+    setBusy(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const applyInv = (inv: Inv, fly: boolean) => {
+    if (!inv.result?.features?.length) return;
+    const env: any = { result: { geojson: { type: "FeatureCollection", features: inv.result.features }, metrics: inv.result.metrics } };
+    const flood = (inv.plan?.constraints ?? []).some((c) => /flood/.test(c)) || inv.evidence.some((e) => e.source?.name?.includes("FEMA"));
+    shown.current = null;
+    applyToMap({ status: "ok", env, actions: flood ? [{ action: "show_layer", layer: "flood" }] : [], plan: { target_kind: "derived" } }, { fly });
+  };
+
+  // a finding → its features on the map (the rest fade), camera to them
+  const showFeatures = (ids: string[], label: string) => {
+    const sh = shown.current;
+    if (!sh) return;
+    const set = new Set(ids);
+    const fs = sh.features.filter((f) => set.has(featId(f)));
+    if (!fs.length) { setToast("Those results aren't on the map"); return; }
+    void gm.current?.setResults({ features: sh.features, docks: sh.docks, links: sh.links, look: "rings", matches: set, pulse: true });
+    gm.current?.flyToBbox(bboxOf(fs), 80, 16.5);
+    setHint(""); setToast(label.length > 60 ? `${label.slice(0, 57)}…` : label);
+  };
 
   const stop = () => {
     abort.current?.abort();
+    if (pollRef.current) {
+      const id = pollRef.current.id;
+      void fetch(`/api/v1/investigations/${id}/cancel`, { method: "POST" });
+      pollRef.current.stop = true;
+      // keep polling once more so the record shows which steps were skipped
+      setTimeout(async () => { const inv = await fetchInv(id, true);
+        if (inv) setMsgs((ms) => ms.map((x) => (x.role === "assistant" && x.inv?.id === id ? { ...x, inv, card: invCard(inv) } : x))); }, 1500);
+    }
     setBusy(false);
     setMsgs((ms) => ms.filter((x) => x.role !== "working").concat([{ id: nextId("a"), role: "assistant", text: "Stopped.", steps: [], secs: "0.0", card: null, pills: [] }]));
   };
@@ -445,10 +543,14 @@ export default function App() {
 
   // ---------- results ----------
   const openResult = useCallback((f: Feature, n: number, from: { msgId: string } | null = null) => {
-    setSel(f); setSelN(n); setSwipe(55); setMenu(null);
+    setSel(f); setSelN(n); setSwipe(55); setMenu(null); setEvOpen(null); setSelEv(null);
     if (from) setSelFrom(from);
+    const inv = lastInvWith(msgs, featId(f));
+    if (inv) fetch(`/api/v1/investigations/${inv.id}/features/${encodeURIComponent(featId(f))}/evidence`).then((r) => r.json())
+      .then((d) => setSelEv(d.found ? { ...d, inv: inv.id } : null)).catch(() => {});
     gm.current?.flyToFeature(f);
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [msgs]);
   useEffect(() => {
     if (!gm.current) return;
     gm.current.onOpen = (id) => {
@@ -461,6 +563,15 @@ export default function App() {
       if (f) setTip({ x, y, text: units(whyOf(f), prefs.units) });
     };
   }, [openResult, prefs.units]);
+
+  const verdict = async (invId: string, fid: string, v: "confirm" | "reject") => {
+    try {
+      await fetch(`/api/v1/investigations/${invId}/feedback`, { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ feature_id: fid, verdict: v }) });
+      setSelEv((o: any) => (o ? { ...o, verdict: v } : o));
+      setToast(v === "confirm" ? "Confirmed. Stored as evidence." : "Rejected. Stored as evidence.");
+    } catch { setToast("Couldn't record that"); }
+  };
 
   const doExport = useCallback(async (card: Card, format: "csv" | "geojson") => {
     setMenu(null);
@@ -494,7 +605,9 @@ export default function App() {
   const sheet = sel ? sheetFor(sel, selN, prefs.units) : null;
   const selBox = sel ? sheetBbox(sel) : null;
   const fromPoint = !!(sel && ((msgs.find((x) => x.id === (selFrom?.msgId ?? point.current.msgId)) as AsstMsg | undefined)?.req?.kind === "point"));
-  const sideMode = prefs.sidebar;
+  const sideOpen = narrow ? drawer : prefs.sidebar === "open";
+  const openSide = () => { if (narrow) setDrawer(true); else setPrefs({ ...prefs, sidebar: "open" }); };
+  const closeSide = () => { if (narrow) setDrawer(false); else setPrefs({ ...prefs, sidebar: "rail" }); };
 
   const composerProps = { busy, onStop: stop, area, onArea: chooseArea, year: cyear, onYear: (y: Year) => { setCyear(y); if (y !== "compare") setYear(Number(y)); },
     mode, onMode: setMode, places, saved: areas, onDraw: (k: DrawKind) => void drawArea(k),
@@ -502,16 +615,25 @@ export default function App() {
 
   return (
     <div className="gt-app">
-      <Sidebar mode={sideMode} narrow={narrow} drawerOpen={drawer} onDrawer={setDrawer}
-        onToggle={() => setPrefs({ ...prefs, sidebar: sideMode === "open" ? "rail" : "open" })} onNew={() => resetAll(true)}
-        sessions={sessions} total={total} activeId={sid} onOpen={(id) => void openSession(id)} onRename={renameSession} onDelete={deleteSession}
+      <NavRail view={view} sidebarOpen={sideOpen} settingsOpen={settingsOpen} onSettings={() => setSettingsOpen((o) => !o)}
+        onHome={() => resetAll(true)} onDiscover={() => { resetAll(true); setTimeout(() => document.querySelector(".gt-starters")?.scrollIntoView({ behavior: "smooth" }), 80); }}
+        onView={(v) => { if (sideOpen && view === v) closeSide(); else { setView(v); openSide(); } }} />
+      {settingsOpen && (
+        <div className="gt-pop gt-settings gt-settings-rail" role="dialog" aria-label="Settings" onMouseLeave={() => setSettingsOpen(false)}>
+          <div className="gt-poplabel">Imagery year</div>
+          <Seg value={String(prefs.year)} options={[["2022", "2022"], ["2020", "2020"]]} onChange={(v) => { const p = { ...prefs, year: Number(v) as 2022 | 2020 }; setPrefs(p); if (stage === "landing") { setYear(p.year); setCyear(v as Year); } }} />
+          <div className="gt-poplabel">Units</div>
+          <Seg value={prefs.units} options={[["m", "Metres"], ["ft", "Feet"]]} onChange={(v) => setPrefs({ ...prefs, units: v as "m" | "ft" })} />
+          <label className="gt-check" style={{ marginTop: 6 }}><input type="checkbox" checked={prefs.reduceMotion} onChange={() => setPrefs({ ...prefs, reduceMotion: !prefs.reduceMotion })} />Reduce motion</label>
+        </div>)}
+      <Sidebar view={view} narrow={narrow} open={sideOpen} onClose={closeSide} onNew={() => resetAll(true)} query={query} onQuery={setQuery}
+        sessions={sessions} total={total} activeId={sid} onOpen={(id) => void openSession(id)} onRename={renameSession} onDelete={deleteSession} reports={reports}
         onShowAll={() => setLimit(200)} areas={areas} onArea={(a) => { chooseArea({ label: a.name, geojson: a.geometry }); if (stage === "work") gm.current?.flyToBbox(geomBbox(a.geometry), 48, 16); }}
-        onDeleteArea={(id) => api.delArea(id).then(refreshLists)} pins={pins} onPin={(p) => void openPin(p)} onUnpin={(id) => api.delPin(id).then(refreshLists)}
-        prefs={prefs} onPrefs={(p) => { setPrefs(p); if (stage === "landing") { setYear(p.year); setCyear(String(p.year) as Year); } }} />
+        onDeleteArea={(id) => api.delArea(id).then(refreshLists)} pins={pins} onPin={(p) => void openPin(p)} onUnpin={(id) => api.delPin(id).then(refreshLists)} />
 
       <div className="gt-stage">
         <div className="gt-ws" style={{ position: "absolute", inset: 0, display: "flex" }}>
-          <aside className="gt-panel" aria-label="Conversation" style={{ width: 400, flex: "none", height: "100%", background: "#ffffff",
+          <aside className="gt-panel" aria-label="Conversation" style={{ width: 420, flex: "none", height: "100%", background: "#ffffff",
             borderRight: "1px solid #e7e6e3", display: "flex", flexDirection: "column", zIndex: 2, opacity: landing ? 0 : 1,
             transform: `translateX(${landing ? -24 : 0}px)`, transition: "opacity .5s ease .05s, transform .6s cubic-bezier(.2,.8,.2,1) .05s" }}>
             <div className="gt-panelhead">
@@ -549,7 +671,10 @@ export default function App() {
                 const isPick = !!m.pick && !pickDone;
                 return (
                   <div key={m.id} className="gt-in" data-testid="assistant-msg" data-msg={m.id} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                    <p data-testid="reply" style={{ margin: 0, fontSize: 15, lineHeight: 1.5, color: "#191919" }}>{units(m.text, prefs.units)}</p>
+                    {m.inv ? (
+                      <InvestigationBlock inv={m.inv} latest={i === lastA} busy={busy} fmtU={(x) => units(x, prefs.units)}
+                        onShow={showFeatures} onFollow={(t) => void send(t)} onOpenEvidence={(e) => { setSel(null); setEvOpen(e); }} />
+                    ) : <p data-testid="reply" style={{ margin: 0, fontSize: 15, lineHeight: 1.5, color: "#191919" }}>{units(m.text, prefs.units)}</p>}
                     {!!m.insights?.length && (
                       <div className="gt-insights" data-testid="insights">{m.insights.map((t, k) => <span key={k}>{units(t, prefs.units)}</span>)}</div>)}
                     {m.steps.length > 0 && (<>
@@ -646,7 +771,7 @@ export default function App() {
             </div>
 
             <div style={{ padding: "10px 16px 16px" }}>
-              <Composer ref={comp2} variant="panel" inputId="gt-ask-2" placeholder="Ask a follow-up…" value={landing ? "" : input}
+              <Composer ref={comp2} variant="panel" inputId="gt-ask-2" placeholder="Ask a follow-up, or investigate further…" value={landing ? "" : input}
                 onChange={setInput} onSend={() => void send(input)} {...composerProps} />
               <div style={{ fontSize: 12, color: "#6b6b68", marginTop: 8, paddingLeft: 4 }}>NAIP {year} · Mecklenburg County</div>
             </div>
@@ -697,6 +822,27 @@ export default function App() {
               <button className="gt-icon" onClick={() => gm.current?.zoom(-1)} aria-label="Zoom out"><I.Minus14 /></button>
             </div>
 
+            {evOpen && !sel && (
+              <div className="gt-sheet gt-frost gt-in gt-evpanel" data-testid="evidence-panel">
+                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
+                  <div>
+                    <div className="gt-evpanel-k">Evidence {evOpen.id} · {evOpen.kind.replace(/_/g, " ")}</div>
+                    <div style={{ fontSize: 15, fontWeight: 500, lineHeight: 1.4, marginTop: 4 }}>{units(evOpen.statement, prefs.units)}</div>
+                  </div>
+                  <button className="gt-icon" onClick={() => setEvOpen(null)} aria-label="Close" style={{ margin: "-8px -8px 0 0" }}><I.Close /></button>
+                </div>
+                <div className="gt-evgrid">
+                  <span>Strength</span><span><Bars s={evOpen.strength} /> {evOpen.strength === "insufficient" ? "Gap" : evOpen.strength}</span>
+                  {evOpen.source?.name && <><span>Source</span><span>{evOpen.source.name}{evOpen.source.date ? ` · ${evOpen.source.date}` : ""}{evOpen.source.licence ? ` · ${evOpen.source.licence}` : ""}</span></>}
+                  {evOpen.method && <><span>Method</span><span>{scrub(evOpen.method)}</span></>}
+                  {Object.entries(evOpen.measurement ?? {}).filter(([, v]) => typeof v !== "object").map(([k, v]) => (
+                    <><span key={`k${k}`}>{k.replace(/_/g, " ")}</span><span key={`v${k}`} style={{ fontVariantNumeric: "tabular-nums" }}>{String(v)}</span></>))}
+                  {evOpen.confidence_note && <><span>Confidence</span><span>{evOpen.confidence_note}</span></>}
+                </div>
+                {evOpen.limitations.length > 0 && <div className="gt-evlims">{evOpen.limitations.map((l, k) => <p key={k}>{scrub(l)}</p>)}</div>}
+                {evOpen.feature_ids.length > 0 && <button className="gt-pill" style={{ alignSelf: "flex-start" }} onClick={() => showFeatures(evOpen.feature_ids, evOpen.statement)}>
+                  Show {evOpen.feature_ids.length} on the map</button>}
+              </div>)}
             <div className="gt-sheet gt-frost" aria-hidden={!sel} data-testid="sheet" style={{ position: "absolute", top: 16, right: 16, bottom: 16, width: 360, borderRadius: 20,
               display: "flex", flexDirection: "column", overflowY: "auto", zIndex: 4, padding: 16, gap: 14, opacity: sel ? 1 : 0,
               transform: `translateX(${sel ? 0 : 24}px)`, pointerEvents: sel ? "auto" : "none",
@@ -721,7 +867,20 @@ export default function App() {
                   Compare 2020 and 2022
                   <input className="gt-range" type="range" min={0} max={100} value={swipe} onChange={(e) => setSwipe(Number(e.target.value))} />
                 </label>
-                {sel.properties?.why && <div className="gt-why" data-testid="why">{units(String(sel.properties.why), prefs.units)}</div>}
+                {sel.properties?.why && typeof sel.properties.why === "string" && <div className="gt-why" data-testid="why">{units(String(sel.properties.why), prefs.units)}</div>}
+                {selEv && (
+                  <div className="gt-selev" data-testid="feature-evidence">
+                    <div className="gt-evpanel-k">Evidence for this result</div>
+                    {selEv.evidence.filter((e: any) => e.feature_ids.length).slice(0, 6).map((e: any) => (
+                      <button key={e.id} className="gt-evrow" onClick={() => { setSel(null); setEvOpen(e); }}>
+                        <span className="gt-evid">{e.id}</span><span className="gt-evtext">{units(e.statement, prefs.units)}<span className="gt-evsrc">{e.source?.name}</span></span></button>))}
+                    {selEv.missing.length > 0 && <div className="gt-evlims">{selEv.missing.map((x: string, k: number) => <p key={k}>Missing: {x}</p>)}</div>}
+                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                      <button className="gt-pill" onClick={() => void verdict(selEv.inv, featId(sel), "confirm")}>Confirm</button>
+                      <button className="gt-pill" onClick={() => void verdict(selEv.inv, featId(sel), "reject")}>Reject</button>
+                      <span style={{ fontSize: 12, color: "#6b6b68" }}>{selEv.verdict ? `Recorded as ${selEv.verdict === "confirm" ? "confirmed" : "rejected"}` : "Your review is stored as evidence"}</span>
+                    </div>
+                  </div>)}
                 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                   {sheet.facts.map((f, k) => <p key={k} style={{ margin: 0, fontSize: 14, lineHeight: 1.5, color: "#191919" }}>{f}</p>)}
                 </div>
@@ -754,9 +913,9 @@ export default function App() {
           <div style={{ position: "relative", height: "100%", display: "flex", flexDirection: "column" }}>
             {narrow && <button className="gt-icon gt-icon-sm" style={{ margin: "14px 0 0 14px" }} aria-label="Open sidebar" onClick={() => setDrawer(true)}><Menu size={16} strokeWidth={1.5} /></button>}
             <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "0 16px 8vh", gap: 22 }}>
-              <h1 style={{ margin: 0, fontSize: 30, fontWeight: 400, letterSpacing: "-0.02em", lineHeight: 1.2, textAlign: "center" }}>What do you want to find?</h1>
+              <h1 style={{ margin: 0, fontSize: 30, fontWeight: 400, letterSpacing: "-0.02em", lineHeight: 1.2, textAlign: "center" }}>What should Groundtruth investigate?</h1>
               <div style={{ width: "100%", maxWidth: 640 }}>
-                <Composer ref={comp1} variant="landing" inputId="gt-ask-1" placeholder="Houses with pools near Lake Norman…" value={landing ? input : ""}
+                <Composer ref={comp1} variant="landing" inputId="gt-ask-1" placeholder="Ask Groundtruth to investigate an area…" value={landing ? input : ""}
                   autoFocus onChange={setInput} onSend={() => void send(input)} {...composerProps} />
               </div>
               <div className="gt-starters">
@@ -868,4 +1027,45 @@ function sheetFor(f: Feature, n: number, u: "m" | "ft"): { title: string; sub: s
   if (p.height_m) facts.push(`About ${Number(p.height_m).toFixed(1)} m tall.`);
   if (p.change === "new") facts.push("New since 2020.");
   return { title: p.kind === "dock" ? "Dock" : "Result", sub: `Result ${n} · NAIP 2022`, facts: facts.map((x) => units(x, u)) };
+}
+
+
+// ---------- investigations (helpers) ----------
+function ownerId(): string { return ownerFn(); }
+
+async function fetchInv(id: string, features: boolean): Promise<Inv | null> {
+  try { return await fetch(`/api/v1/investigations/${id}${features ? "?features=1" : ""}`).then((r) => (r.ok ? r.json() : null)); }
+  catch { return null; }
+}
+
+function lastInv(ms: Msg[]): Inv | null {
+  for (let i = ms.length - 1; i >= 0; i--) { const m = ms[i]; if (m.role === "assistant" && m.inv) return m.inv; }
+  return null;
+}
+
+function lastInvWith(ms: Msg[], fid: string): Inv | null {
+  for (let i = ms.length - 1; i >= 0; i--) {
+    const m = ms[i];
+    if (m.role === "assistant" && m.inv?.result?.features?.some((f) => featId(f) === fid)) return m.inv;
+  }
+  return null;
+}
+
+/** The result card for an investigation: the final set, counted (the planner's exhaustive area scan). */
+function invCard(inv: Inv): Card | null {
+  const fs = (inv.result?.features ?? []).filter((f) => !["dock", "dock_link"].includes(f.properties?.kind));
+  if (!fs.length) return null;
+  const what = inv.plan?.targets?.[0] ?? "results";
+  const cond = (inv.plan?.constraints ?? []).slice(-1)[0];
+  return { title: `${fmt(fs.length)} ${what}${cond ? ` ${cond}` : ""}`, sub: `${inv.plan?.scope?.label ?? "Previous results"} · NAIP 2022`, count: fs.length,
+    features: fs, ref: inv.id, kind: "investigation",
+    details: inv.evidence.filter((e) => e.method).map((e) => `${e.id}: ${scrub(e.method)}`) };
+}
+
+function invTitle(objective: string, inv: Inv): string {
+  const place = inv.plan?.scope?.label;
+  const what = inv.plan?.targets?.[0];
+  const cond = inv.plan?.constraints?.[0];
+  if (place && what) return `${place} · ${what}${cond && /flood/.test(cond) ? " · flood" : ""}`;
+  return objective.length > 60 ? `${objective.slice(0, 57)}…` : objective;
 }

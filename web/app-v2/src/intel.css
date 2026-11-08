@@ -1,0 +1,100 @@
+/* Intelligence workspace: navigation rail, investigation sidebar, plan timeline, findings, evidence. Tokens: tokens.css
+   (canvas #f4f4f2, surface #fff, ink #191919, muted #5c5c5c / #6b6b68, hairline #e7e6e3, Inter 400/500, 180 ms). */
+
+/* ---------- rail ---------- */
+.gt-rail { flex: none; width: 56px; height: 100%; background: var(--canvas); border-right: 1px solid var(--hairline); display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 12px 0; z-index: 7; }
+.gt-rail-logo { width: 40px; height: 40px; border: 0; background: transparent; border-radius: 10px; display: flex; align-items: center; justify-content: center; cursor: pointer; margin-bottom: 8px; }
+.gt-rail-btn { position: relative; width: 40px; height: 40px; border: 0; background: transparent; border-radius: 10px; display: flex; align-items: center; justify-content: center; color: var(--muted); cursor: pointer; transition: background .18s ease, color .18s ease; }
+.gt-rail-btn:hover { background: var(--user-bubble); color: var(--ink); }
+.gt-rail-on { background: #fff; color: var(--ink); box-shadow: 0 0 0 1px var(--hairline), 0 1px 2px rgba(0, 0, 0, .04); }
+.gt-rail-btn::after, .gt-rail-logo::after { content: attr(data-tip); position: absolute; left: 48px; top: 50%; transform: translateY(-50%); white-space: nowrap; background: var(--ink); color: #fff; font-size: 12px; padding: 5px 8px; border-radius: 8px; opacity: 0; pointer-events: none; transition: opacity .12s ease; z-index: 30; }
+.gt-rail-btn:hover::after, .gt-rail-btn:focus-visible::after, .gt-rail-logo:hover::after { opacity: 1; }
+.gt-rail-logo { position: relative; }
+.gt-settings-rail { position: absolute; left: 64px; bottom: 16px; width: 224px; padding: 10px; z-index: 40; }
+
+/* ---------- investigation sidebar ---------- */
+.gt-side { width: 264px; }
+.gt-drawer { left: 56px; }
+.gt-side-title { font-size: 15px; font-weight: 500; padding-left: 6px; flex: 1; }
+.gt-side-top { justify-content: space-between; }
+.gt-sidesearch { display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 10px; border: 1px solid var(--hairline); border-radius: 10px; background: rgba(255, 255, 255, .6); color: var(--muted-body); }
+.gt-sidesearch:focus-within { border-color: var(--hairline-strong); background: #fff; }
+.gt-sidesearch input { flex: 1; min-width: 0; border: 0; outline: none; background: transparent; font: inherit; font-size: 13px; color: var(--ink); }
+.gt-rowbtn2 { flex-direction: column; align-items: flex-start; gap: 2px; text-decoration: none; }
+.gt-rowbtn2 .gt-rowtitle { width: 100%; }
+.gt-rowmeta { display: flex; gap: 6px; align-items: center; font-size: 12px; color: var(--muted-body); max-width: 100%; min-width: 0; white-space: nowrap; }
+.gt-rowmeta > span:last-child { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.gt-stat { flex: none; }
+.gt-stat { display: inline-flex; align-items: center; gap: 4px; }
+.gt-stat::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: #9a9a96; }
+.gt-stat-running::before, .gt-stat-planning::before { background: var(--accent); animation: gtDot 1.1s infinite ease-in-out; }
+.gt-stat-done::before { background: #2e8b57; }
+.gt-stat-partial::before, .gt-stat-needs_input::before { background: var(--dock); }
+.gt-stat-failed::before { background: #c0392b; }
+
+/* ---------- investigation in the chat ---------- */
+.gt-reply { margin: 0; font-size: 15px; line-height: 1.5; color: var(--ink); }
+.gt-invblock { display: flex; flex-direction: column; gap: 12px; }
+.gt-understood { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; font-size: 13px; line-height: 1.45; padding: 10px 12px; border: 1px solid var(--hairline); border-radius: 12px; background: #fafaf9; }
+.gt-urow { display: contents; }
+.gt-urow span:first-child { color: var(--muted-body); }
+.gt-urow span:last-child { color: var(--ink); }
+.gt-plan { border: 1px solid var(--hairline); border-radius: 12px; overflow: hidden; }
+.gt-planhead { width: 100%; display: flex; align-items: center; gap: 6px; padding: 9px 12px; border: 0; background: #fff; font-size: 13px; color: var(--muted); cursor: pointer; text-align: left; }
+.gt-planhead:hover { color: var(--ink); background: #fafaf9; }
+.gt-steps { list-style: none; margin: 0; padding: 4px 12px 10px; display: flex; flex-direction: column; gap: 2px; border-top: 1px solid var(--hairline); }
+.gt-step { display: flex; gap: 10px; align-items: flex-start; padding: 6px 0; font-size: 13px; line-height: 1.4; }
+.gt-step-ic { flex: none; width: 18px; height: 18px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin-top: 1px; color: var(--muted-body); }
+.gt-step-done .gt-step-ic { background: var(--ink); color: #fff; }
+.gt-step-done .gt-step-ic svg { width: 11px; height: 11px; }
+.gt-step-running .gt-step-ic { color: var(--accent); }
+.gt-step-failed .gt-step-ic { background: #c0392b; color: #fff; }
+.gt-step-failed .gt-step-ic svg, .gt-step-blocked .gt-step-ic svg { width: 11px; height: 11px; }
+.gt-step-blocked .gt-step-ic, .gt-step-skipped .gt-step-ic { background: var(--user-bubble); }
+.gt-step-queued { opacity: .55; }
+.gt-step-body { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.gt-step-label { color: var(--ink); }
+.gt-step-detail { color: var(--muted-body); font-size: 12px; overflow-wrap: anywhere; }
+.gt-step-ms { flex: none; color: var(--muted-body); font-size: 12px; font-variant-numeric: tabular-nums; }
+.gt-spin { animation: gtSpin 1s linear infinite; }
+@keyframes gtSpin { to { transform: rotate(360deg); } }
+.gt-pillrow { display: flex; flex-wrap: wrap; gap: 6px; }
+.gt-pill-a { display: inline-flex; align-items: center; gap: 6px; text-decoration: none; }
+
+/* findings: strength = three bars (weakest evidence wins) */
+.gt-findings { display: flex; flex-direction: column; border: 1px solid var(--hairline); border-radius: 12px; overflow: hidden; }
+.gt-finding + .gt-finding { border-top: 1px solid var(--hairline); }
+.gt-finding-head { width: 100%; display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border: 0; background: #fff; text-align: left; cursor: pointer; font-size: 14px; line-height: 1.45; color: var(--ink); }
+.gt-finding-head:hover { background: #fafaf9; }
+.gt-finding-insufficient .gt-finding-text { color: var(--muted); }
+.gt-finding-text { flex: 1; min-width: 0; }
+.gt-finding-body { padding: 0 12px 10px 38px; display: flex; flex-direction: column; gap: 6px; background: #fff; }
+.gt-finding-meta { font-size: 12px; color: var(--muted-body); }
+.gt-bars { display: inline-flex; gap: 2px; align-items: flex-end; flex: none; margin-top: 5px; height: 11px; }
+.gt-bars i { display: block; width: 3px; border-radius: 1px; background: #dcdad5; }
+.gt-bars i:nth-child(1) { height: 5px; } .gt-bars i:nth-child(2) { height: 8px; } .gt-bars i:nth-child(3) { height: 11px; }
+.gt-bars i.on { background: var(--ink); }
+.gt-bars-weak i.on { background: var(--dock); }
+.gt-evrow { display: flex; gap: 8px; align-items: flex-start; border: 0; background: transparent; padding: 6px 8px; margin-left: -8px; border-radius: 8px; text-align: left; cursor: pointer; font-size: 13px; line-height: 1.4; color: var(--ink); }
+.gt-evrow:hover { background: var(--canvas); }
+.gt-evid { flex: none; font-size: 11px; font-weight: 500; color: var(--muted-body); background: var(--canvas); border-radius: 6px; padding: 1px 6px; margin-top: 1px; font-variant-numeric: tabular-nums; }
+.gt-evtext { display: flex; flex-direction: column; gap: 1px; }
+.gt-evsrc { font-size: 12px; color: var(--muted-body); }
+.gt-cross { display: flex; flex-direction: column; gap: 6px; font-size: 12px; line-height: 1.45; color: var(--muted); }
+.gt-cross div { display: flex; gap: 8px; align-items: flex-start; }
+.gt-cross svg { flex: none; margin-top: 2px; color: var(--dock); }
+
+/* evidence inspector + per-result evidence in the sheet */
+.gt-evpanel { position: absolute; top: 16px; right: 16px; bottom: 16px; width: 360px; border-radius: 20px; display: flex; flex-direction: column; gap: 14px; overflow-y: auto; z-index: 4; padding: 16px; }
+.gt-evpanel-k { font-size: 12px; font-weight: 500; color: var(--muted-body); text-transform: none; }
+.gt-evgrid { display: grid; grid-template-columns: 96px 1fr; gap: 6px 10px; font-size: 13px; line-height: 1.45; }
+.gt-evgrid > span:nth-child(odd) { color: var(--muted-body); }
+.gt-evgrid > span:nth-child(even) { color: var(--ink); overflow-wrap: anywhere; display: flex; gap: 6px; align-items: baseline; }
+.gt-evlims { display: flex; flex-direction: column; gap: 4px; font-size: 12px; line-height: 1.45; color: var(--muted); border-left: 2px solid var(--hairline); padding-left: 10px; }
+.gt-evlims p { margin: 0; }
+.gt-selev { display: flex; flex-direction: column; gap: 6px; padding-top: 10px; border-top: 1px solid var(--hairline); }
+
+@media (max-width: 900px) {
+  .gt-rail { width: 48px; }
+  .gt-drawer { left: 48px; }
+}

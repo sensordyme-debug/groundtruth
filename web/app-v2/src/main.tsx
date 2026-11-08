@@ -5,6 +5,7 @@ import "@fontsource/inter/500.css";
 import "./tokens.css";
 import "./app.css";
 import "./shell.css";
+import "./intel.css";
 import App from "./App";
 
 createRoot(document.getElementById("root")!).render(<StrictMode><App /></StrictMode>);

@@ -87,13 +87,22 @@ class SessionPatch(BaseModel):
 
 
 @router.get("/sessions")
-def list_sessions(limit: int = 20, x_gt_owner: str | None = Header(None)) -> dict[str, Any]:
+def list_sessions(limit: int = 20, q: str = "", x_gt_owner: str | None = Header(None)) -> dict[str, Any]:
+    """Newest first. ``q`` searches titles and the stored objective / area / findings text (case-insensitive).
+    Each row carries the latest investigation status and area the app stored (data.status, data.scope)."""
     o = _owner(x_gt_owner)
+    where, args = "owner=?", [o]
+    if q.strip():
+        where += " AND (lower(title) LIKE ? OR lower(data) LIKE ?)"
+        like = f"%{q.strip().lower()[:80]}%"
+        args += [like, like]
     with _LOCK:
-        rows = _db().execute("SELECT id, title, created, updated FROM sessions WHERE owner=? ORDER BY updated DESC, id "
-                             "LIMIT ?", (o, max(1, min(limit, 500)))).fetchall()
-        total = _db().execute("SELECT COUNT(*) FROM sessions WHERE owner=?", (o,)).fetchone()[0]
-    return {"sessions": [{"id": r[0], "title": r[1], "created": r[2], "updated": r[3]} for r in rows], "total": total}
+        rows = _db().execute(f"SELECT id, title, created, updated, json_extract(data, '$.status'), json_extract(data, '$.scope') "
+                             f"FROM sessions WHERE {where} ORDER BY updated DESC, id LIMIT ?",
+                             (*args, max(1, min(limit, 500)))).fetchall()
+        total = _db().execute(f"SELECT COUNT(*) FROM sessions WHERE {where}", args).fetchone()[0]
+    return {"sessions": [{"id": r[0], "title": r[1], "created": r[2], "updated": r[3], "status": r[4], "scope": r[5]}
+                         for r in rows], "total": total}
 
 
 @router.post("/sessions")

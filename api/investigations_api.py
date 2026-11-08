@@ -15,7 +15,7 @@ import json
 import time
 from typing import Any, Literal
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Header, HTTPException, Query
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field
 
@@ -49,16 +49,38 @@ def _view(inv, features: bool) -> dict[str, Any]:
 
 
 @router.post("/investigations")
-def create(b: InvIn) -> dict[str, Any]:
+def create(b: InvIn, x_gt_owner: str | None = Header(None)) -> dict[str, Any]:
     from api.app import eng
     from groundtruth import investigate as I
 
     if len(json.dumps(b.context)) > 200_000:
         raise HTTPException(413, "context too large")
-    inv = I.start(b.objective, b.context, lambda year: eng(None, year), _policy)
+    ctx = {**b.context, "_owner": (x_gt_owner or "")[:64]}  # the anonymous browser id (lists "my reports"), never a person
+    inv = I.start(b.objective, ctx, lambda year: eng(None, year), _policy)
     if inv.status == "needs_input" and inv.summary == "fallback:chat":
         return {"fallback": "chat", "id": inv.id}
     return _view(inv, features=False)
+
+
+@router.get("/investigations")
+def list_mine(limit: int = 30, x_gt_owner: str | None = Header(None)) -> dict[str, Any]:
+    """This browser's investigations that produced a plan (newest first): id, objective, status, scope."""
+    from groundtruth import investigate as I
+    if not x_gt_owner:
+        return {"investigations": []}
+    out = []
+    for p in sorted(I.store_dir().glob("*.json"), key=lambda q: q.stat().st_mtime, reverse=True)[:400]:
+        try:
+            d = json.loads(p.read_text())
+        except (OSError, ValueError):
+            continue
+        if (d.get("context") or {}).get("_owner") != x_gt_owner or not d.get("plan"):
+            continue
+        out.append({"id": d["id"], "objective": d["objective"], "status": d["status"], "updated": d["updated"],
+                    "scope": ((d.get("plan") or {}).get("scope") or {}).get("label")})
+        if len(out) >= limit:
+            break
+    return {"investigations": out}
 
 
 @router.get("/investigations/{inv_id}")
