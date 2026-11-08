@@ -1737,7 +1737,8 @@ class Engine:
 
     @memo()
     def find_derived(self, kind: str = "house_with_pool", place: str | None = None, require: Sequence[str] = (),
-                     sort: str | None = None, top: int | None = None, docks_new_since: int | None = None) -> Envelope:
+                     sort: str | None = None, top: int | None = None, docks_new_since: int | None = None,
+                     exclude_ids: Sequence[str] = ()) -> Envelope:
         """Derived concepts over verified objects (conf/derived.json): houses with pools, optionally lakefront and with
         their own dock. Precomputed per place (scripts/build_derived.py → data/derived/<version>/<place>/).
         ``require`` ⊆ {lakefront, has_dock}; ``sort`` = "pool_area" (biggest first) with ``top``; ``docks_new_since``
@@ -1757,21 +1758,22 @@ class Engine:
             houses = json.loads((d / "houses.geojson").read_text())["features"]
             links = json.loads((d / "links.geojson").read_text())["features"]
         n_all = len(houses)
+        if exclude_ids:  # the user said "Not this" on these houses
+            houses = [h for h in houses if h["properties"]["id"] not in set(exclude_ids)]
         with t.step("filter", f"require {list(require) or 'nothing'}"):
             for r in require:
                 houses = [h for h in houses if h["properties"].get(r)]
         new_info = None
         if docks_new_since:
-            dock_ids = sorted({i for h in houses for i in h["properties"].get("dock_ids", []) if i})
-            with t.step("compare_years", f"{len(dock_ids)} docks vs {docks_new_since}"):
-                cy = self.compare_years(dock_ids, from_year=docks_new_since)
-            if cy.status == "declined":
-                return declined(tool, VERSION, f"docks since {docks_new_since}: {cy.declined_reason}")
-            new = {f["properties"].get("example") or f.get("id") for f in cy.result.geojson["features"]
-                   if f["properties"].get("change") == "new"}
-            houses = [h for h in houses if any(i in new for i in h["properties"].get("dock_ids", []))]
-            new_info = {"docks_checked": len(dock_ids), "docks_new": len(new), **{k: cy.result.metrics.get(k)
-                                                                                   for k in ("new", "existing", "unsure")}}
+            pre = all("dock_new_2020" in h["properties"] for h in houses) and int(docks_new_since) == 2020
+            if not pre:
+                return declined(tool, VERSION, f"docks since {docks_new_since} are only precomputed against 2020")
+            with t.step("compare_years", "each dock's footprint: deck in 2022, water in 2020"):
+                checked = sum(len(h["properties"].get("dock_new_2020", [])) for h in houses)
+                unsure = sum(1 for h in houses for r in h["properties"]["dock_new_2020"] if r.get("new") is None)
+                houses = [h for h in houses if any(r.get("new") for r in h["properties"]["dock_new_2020"])]
+                n_new = sum(1 for h in houses for r in h["properties"]["dock_new_2020"] if r.get("new"))
+            new_info = {"docks_checked": checked, "docks_new": n_new, "unsure": unsure}
         if sort == "pool_area":
             houses = sorted(houses, key=lambda h: (-float(h["properties"].get("pool_area_m2") or 0), h["properties"]["id"]))
             houses = houses[: int(top or json.loads((config.SENSES_PATH.parent / "derived.json").read_text())["biggest_n"])]
@@ -1784,9 +1786,12 @@ class Engine:
             feats.append(h)
         if "has_dock" in require:
             for h in houses:
+                chg = h["properties"].get("dock_new_2020") or []
                 for k, dg in enumerate(h["properties"].get("dock_geometries", [])):
+                    is_new = bool(k < len(chg) and chg[k].get("new"))
                     feats.append({"type": "Feature", "id": f"dock:{h['properties']['id']}:{k}", "geometry": dg,
-                                  "properties": {"kind": "dock", "house_id": h["properties"]["id"], "geometry_kind": "outline"}})
+                                  "properties": {"kind": "dock", "house_id": h["properties"]["id"], "geometry_kind": "outline",
+                                                 "new_since_2020": is_new}})
             feats += [l for l in links if l["properties"]["house_id"] in ids]
         hs = [f for f in feats if f["properties"].get("kind") == "house_with_pool"]
         pa = sum(float(f["properties"].get("pool_area_m2") or 0) for f in hs)

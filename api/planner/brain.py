@@ -45,7 +45,9 @@ def chat(engine_for, text: str, context: dict[str, Any] | None) -> dict[str, Any
     out["think_leak"] = bool(pinfo.get("think_leak"))
     # 4. reply: rewrite the template answer; the number guard keeps every number tied to an envelope
     says = [a for a in out["actions"] if a.get("action") == "say"]
-    if says and out.get("status") == "ok" and not out.get("cached_reply"):
+    # the hero chain (derived) and questions back to the user keep their exact template wording
+    if says and out.get("status") == "ok" and not out.get("cached_reply") and not out.get("ask") \
+            and (out.get("plan") or {}).get("target_kind") != "derived":
         tmpl = says[-1]["text"]
         reply, rinfo = local.llm_reply(tmpl, out["steps"])
         refs = " ".join(sorted(set(re.findall(r"\(step_\d+\)", tmpl))))
