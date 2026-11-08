@@ -35,6 +35,9 @@ PEOPLE_TERMS = ("owner", "who owns", " owns ", "owned by", "who lives", "lives a
                 "income", "race", "ethnicity", "crime", "school rating", "demographic", "home address of",
                 "name of", "names of")
 NOT_IMPLEMENTED = "not_implemented"
+# T4 risk predicates for filter(where=...): each fills a per-feature property (docs/CONTRACT.md "Risk answers")
+RISK_PREDICATES = ("in_flood_zone", "within_m_of_shore", "canopy_over_pct", "elevation_above_flood_m", "slope_deg",
+                   "height_m")
 
 
 _PEOPLE_RE = __import__("re").compile(
@@ -1502,20 +1505,47 @@ class Engine:
                 if bb is None:
                     return declined(tool, VERSION, f"unknown place {where['inside_place']!r}")
                 place_g = to_measure(box(*bb))
-            iso_g, iso_info = None, None
-            if where.get("within_minutes_of") and feats:
+            iso_g, iso_info, travel_key = None, None, None
+            wm = where.get("within_minutes_of")
+            outside = bool(wm.get("outside")) if isinstance(wm, dict) else False
+            if wm and feats:
+                origin = wm.get("origin", wm) if isinstance(wm, dict) else wm
+                o_s = origin.get("category") if isinstance(origin, dict) else origin
+                cat = (self.resolve_category(o_s) if isinstance(o_s, str)
+                       and str(o_s).lower().strip() not in self._pc()["landmarks"] else None)
                 try:
-                    iso_g, iso_info = self._travel_area(where["within_minutes_of"], feats)
-                    from shapely.prepared import prep
+                    if cat:  # a category: per-object drive-time band to the nearest one (minutes_to_<category>)
+                        from groundtruth import risk as R
 
-                    iso_p = prep(iso_g)
+                        mins = float(wm.get("minutes", 10))
+                        facts, minfo = R.minutes_facts(self, feats, cat[0], mins, wm.get("mode", "drive"))
+                        feats = [{"type": "Feature", "id": f.get("id"), "geometry": f["geometry"],
+                                  "properties": {**(f.get("properties") or {}), **d}} for f, d in zip(feats, facts)]
+                        travel_key = f"minutes_to_{cat[0]}"
+                        iso_info = {**minfo, "minutes": mins, "outside": outside,
+                                    "origins": minfo["origins"][:30], "property": travel_key}
+                    else:
+                        iso_g, iso_info = self._travel_area(wm, feats)
+                        from shapely.prepared import prep
+
+                        iso_p = prep(iso_g)
+                        iso_info["outside"] = outside
                 except (KeyError, ValueError, FileNotFoundError) as e:
                     return declined(tool, VERSION, str(e))
+        risk_keys = [k for k in RISK_PREDICATES if where.get(k) is not None]
+        rinfo: dict[str, Any] = {}
+        if risk_keys and feats:
+            try:
+                feats, rinfo = self._risk_annotate(feats, where, t)
+            except (FileNotFoundError, KeyError, ValueError) as e:
+                return declined(tool, VERSION, f"risk data unavailable: {e}")
         keep = []
         with t.step("filter", f"{len(feats)} features"):
             for f in feats:
                 gm = to_measure(shape(f["geometry"]))
                 p = f.get("properties") or {}
+                if risk_keys and not self._risk_pass(p, where, rinfo):
+                    continue
                 a = p.get("area_acres") if p.get("area_acres") is not None else gm.area / SQM_PER_ACRE
                 if inter is not None and not gm.intersects(inter):
                     continue
@@ -1525,8 +1555,12 @@ class Engine:
                     continue
                 if place_g is not None and not gm.intersects(place_g):
                     continue
-                if iso_g is not None and not iso_p.intersects(gm):
+                if iso_g is not None and iso_p.intersects(gm) == outside:
                     continue
+                if travel_key is not None:
+                    v = p.get(travel_key)
+                    if (v is not None and v <= iso_info["minutes"]) == outside:
+                        continue
                 if "min_area_acres" in where and a < where["min_area_acres"]:
                     continue
                 if "max_area_acres" in where and a > where["max_area_acres"]:
@@ -1544,17 +1578,261 @@ class Engine:
             limits.append("Travel times: Valhalla on OpenStreetMap roads at free-flow speeds (no live traffic); "
                           "an object counts when its outline touches the travel-time area")
             sources.append(self.provider.routing_source())
+        method = ("Spatial/attribute predicates evaluated in EPSG:32617 (distances to layer unions"
+                  + ("; travel-time areas = union of Valhalla isochrones from the origins" if iso_info else "") + ")")
+        if risk_keys:
+            metrics["risk"] = {k: v for k, v in rinfo.items() if not k.startswith("_")}
+            limits += rinfo.get("_limits", [])
+            sources += rinfo.get("_sources", [])
+            method += "; risk predicates " + ", ".join(risk_keys) + " (per-feature facts kept as properties: " \
+                + ", ".join(rinfo.get("_props", [])) + ")"
         return self._env(tool, status="ok", result=Result(geojson=feature_collection(keep), metrics=metrics),
+                         confidence=1.0, method=method, limits=limits, sources=sources, steps=t.steps)
+
+    # ------------------------------------------------------------------ risk facts + predicates (T4)
+    def risk_sources(self, kinds: Sequence[str]) -> list[Source]:
+        from groundtruth import risk as R
+
+        out = []
+        if "flood" in kinds:
+            m = R.flood_meta()
+            out.append(Source(name="FEMA NFHL flood hazard zones (layer 28, DFIRM 37119C)", url=R.conf()["flood"]["nfhl_url"],
+                              date=(m.get("built") or "")[:10], licence="Public domain (US Government work, FEMA)"))
+        if "shore" in kinds:
+            out += self.provider.source_for("openstreetmap water")
+        if "lidar" in kinds:
+            out.append(Source(name="USGS 3DEP lidar USGS_LPC_NC_Phase4_Mecklenburg_2016_LAS_2019",
+                              url="https://s3-us-west-2.amazonaws.com/usgs-lidar-public/USGS_LPC_NC_Phase4_Mecklenburg_2016_LAS_2019/ept.json",
+                              date="2016 (published 2019)", licence="Public domain (USGS 3DEP)"))
+        if "canopy" in kinds:
+            out += [s for s in self.provider.sources() if "2022" in s.name and "NAIP" in s.name]
+        if "travel" in kinds:
+            out += [self.provider.routing_source(), self.provider.overture_source("places")]
+        return out
+
+    def _risk_annotate(self, feats: Sequence[dict[str, Any]], where: dict[str, Any], t: StepTimer | None = None,
+                       facts: Sequence[str] = (), concept: str | None = None):
+        """Copies of the features with the risk facts the predicates (or ``facts``) need → (features, info)."""
+        from groundtruth import risk as R
+
+        t = t or StepTimer()
+        need = set(facts)
+        if where.get("in_flood_zone") is not None:
+            need.add("flood")
+        if where.get("elevation_above_flood_m") is not None:
+            need |= {"flood", "elevation"}
+        if where.get("within_m_of_shore") is not None:
+            need.add("shore")
+        if where.get("canopy_over_pct") is not None:
+            need.add("canopy")
+        if where.get("slope_deg") is not None:
+            need.add("slope")
+        if where.get("height_m") is not None:
+            need.add("height")
+        out = [{"type": "Feature", "id": f.get("id"), "geometry": f["geometry"], "properties": dict(f.get("properties") or {})}
+               for f in feats]
+        prim = [f for f in out if f["properties"].get("kind") not in ("dock", "dock_link")]
+        info: dict[str, Any] = {"_limits": [], "_sources": [], "_props": []}
+        concept = concept or where.get("concept")
+
+        def put(facts_l):
+            for f, d in zip(prim, facts_l):
+                f["properties"].update(d)
+            for d in facts_l[:1]:
+                info["_props"] += [k for k in d if k not in info["_props"]]
+
+        if "flood" in need and not all("flood_kind" in f["properties"] for f in prim):
+            with t.step("flood", f"{len(prim)} objects vs FEMA NFHL zones (accurate, unsimplified)"):
+                put(R.flood_facts(prim, self.provider.get_boundary()))
+        if "flood" in need:
+            unc = sum(1 for f in prim if not f["properties"].get("flood_covered", True))
+            info["flood_not_covered"] = unc
+            info["_limits"].append("Flood zones: FEMA NFHL effective zones for Mecklenburg (DFIRM 37119C); an object is "
+                                   "'in' a zone when its outline touches it (the most severe zone wins); FEMA zones are "
+                                   "regulatory maps, not a flood forecast")
+            if unc:
+                info["_limits"].append(f"{unc} objects lie outside the mapped area (FEMA data for Mecklenburg only): "
+                                       "their zone is unknown, not 'outside a zone'")
+            info["_sources"] += self.risk_sources(["flood"])
+        if "elevation" in need and not all("elev_bfe_status" in f["properties"] for f in prim):
+            with t.step("elevation", "lidar DTM (lowest adjacent grade proxy) − FEMA static BFE"):
+                put(R.elevation_facts(prim, [f["properties"] for f in prim]))
+        if "elevation" in need:
+            st: dict[str, int] = {}
+            for f in prim:
+                s_ = f["properties"].get("elev_bfe_status")
+                st[s_] = st.get(s_, 0) + 1
+            info["elev_bfe_status"] = st
+            nb = st.get("no_bfe", 0) + st.get("no_lidar", 0)
+            info["_limits"].append("Height above the base flood elevation (BFE) = lidar bare-earth ground (10th percentile "
+                                   "within 2 m of the outline, a proxy for the lowest adjacent grade; 3DEP 2016, metres "
+                                   "NAVD88) − FEMA STATIC_BFE (feet → metres). Not a surveyed elevation certificate")
+            if nb:
+                info["_limits"].append(f"Height above the flood elevation unavailable for {nb} objects in the 100-year zone "
+                                       f"({st.get('no_bfe', 0)}: FEMA publishes no static BFE for their zone; "
+                                       f"{st.get('no_lidar', 0)}: no lidar built there). They are marked, never estimated")
+            info["_sources"] += self.risk_sources(["lidar"])
+        if "shore" in need and not all("shore_dist_m" in f["properties"] for f in prim):
+            with t.step("shore", "distance to the shoreline of Lake Norman, Mountain Island Lake, Lake Wylie, Catawba River"):
+                put(R.shore_facts(prim))
+        if "shore" in need:
+            info["_limits"].append("Shore = OSM water outline of the main lakes/river (county-line edges removed); "
+                                   "shore_dist_m is from the object's outline")
+            info["_sources"] += self.risk_sources(["shore"])
+        if "canopy" in need:
+            with t.step("canopy", "lidar nDSM ≥ 3 m AND green NAIP 2022 pixel, per object footprint (+ buffer)"):
+                put(R.canopy_facts(prim, concept))
+            n_none = sum(1 for f in prim if f["properties"].get("canopy_over_pct") is None)
+            info["canopy_unmeasured"] = n_none
+            cb = R.conf()["canopy"]
+            info["_limits"].append(f"Canopy = lidar height ≥ {cb['min_height_m']} m (3DEP 2016) AND a green NAIP "
+                                   f"{cb['naip_year']} pixel (colour rule, no NDVI); trees grown or cut since 2016 are partly "
+                                   "missed. " + cb["buffer_note"])
+            if n_none:
+                info["_limits"].append(f"canopy_over_pct unmeasured for {n_none} objects (no lidar/canopy raster there)")
+            info["_sources"] += self.risk_sources(["lidar", "canopy"])
+        if "slope" in need:
+            with t.step("slope", "median DTM slope in each footprint"):
+                put(R.slope_facts(prim))
+            info["slope_unmeasured"] = sum(1 for f in prim if f["properties"].get("slope_deg") is None)
+            info["_limits"].append("Slope from the 1 m lidar bare-earth DTM (2016): ground under buildings is interpolated")
+            info["_sources"] += self.risk_sources(["lidar"])
+        if "height" in need:
+            with t.step("height", "feature height_m, else lidar nDSM 90th percentile"):
+                put(R.height_facts(prim))
+            info["height_unmeasured"] = sum(1 for f in prim if f["properties"].get("height_m") is None)
+            info["_sources"] += self.risk_sources(["lidar"])
+        info["_limits"] = list(dict.fromkeys(info["_limits"]))
+        seen, srcs = set(), []
+        for s in info["_sources"]:
+            if s.name not in seen:
+                seen.add(s.name)
+                srcs.append(s)
+        info["_sources"] = srcs
+        return out, info
+
+    def explain(self, geojson: dict[str, Any], facts: Sequence[str] = (), label: str | None = None,
+                unit: str = "results", base_count: int | None = None, concept: str | None = None,
+                filter_kind: str | None = None) -> Envelope:
+        """The answer layer (T4): every feature gets ``properties.why`` (plain words: its basic fact + every risk fact
+        it carries) and the envelope gets summary numbers + ``metrics.insights`` (1–3 strings built ONLY from those
+        numbers). ``facts`` ⊆ {flood, elevation, shore, canopy, slope, height, travel, lakefront, distance}: facts to
+        measure when missing and to mention. Supplementary features (derived docks / links) are kept, not counted."""
+        tool = "explain"
+        from groundtruth import risk as R
+
+        t = StepTimer()
+        feats = geojson.get("features", [])
+        measurable = [f for f in facts if f in ("flood", "elevation", "shore", "canopy", "slope", "height")]
+        info: dict[str, Any] = {"_limits": [], "_sources": []}
+        if feats and measurable:
+            try:
+                feats, info = self._risk_annotate(feats, {}, t, facts=measurable, concept=concept)
+            except (FileNotFoundError, KeyError, ValueError) as e:
+                return declined(tool, VERSION, f"risk data unavailable: {e}")
+        else:
+            feats = [{"type": "Feature", "id": f.get("id"), "geometry": f["geometry"],
+                      "properties": dict(f.get("properties") or {})} for f in feats]
+        prim = [f for f in feats if f["properties"].get("kind") not in ("dock", "dock_link")]
+        with t.step("why", f"WHY line for {len(feats)} features (conf/risk.json why)"):
+            for f in feats:
+                p = f["properties"]
+                if isinstance(p.get("why"), dict):  # refine's similarity explanation keeps its own key
+                    p["why_detail"] = p.pop("why")
+                if p.get("kind") == "dock":
+                    p["why"] = "Dock" + (" · new since 2020" if p.get("new_since_2020") else "")
+                elif p.get("kind") == "dock_link":
+                    p["why"] = f"house → its dock, {float(p.get('dist_m') or 0):.0f} m"
+                else:
+                    p["why"] = R.why_line(p, label, facts)
+        P = [f["properties"] for f in prim]
+        n = len(P)
+        s: dict[str, Any] = {"count": n, "of_count": base_count, "unit": unit, "filter_kind": filter_kind}
+        if "flood" in facts:
+            s.update(in_100yr=sum(1 for p in P if p.get("flood_kind") == "100yr"),
+                     in_500yr_only=sum(1 for p in P if p.get("flood_kind") == "500yr"),
+                     flood_unknown=sum(1 for p in P if not p.get("flood_covered", True)))
+            zones: dict[str, int] = {}
+            for p in P:
+                if p.get("flood_zone"):
+                    zones[p["flood_zone"]] = zones.get(p["flood_zone"], 0) + 1
+            s["zones"] = dict(sorted(zones.items()))
+        if "elevation" in facts:
+            ok = [p["elev_above_bfe_m"] for p in P if p.get("elev_above_bfe_m") is not None]
+            s.update(bfe_known=len(ok), median_elev_above_bfe_m=R.median(ok),
+                     min_elev_above_bfe_m=min(ok) if ok else None)
+            s.setdefault("in_100yr", sum(1 for p in P if p.get("flood_kind") == "100yr"))
+        if "shore" in facts or "lakefront" in facts:
+            s["median_shore_dist_m"] = R.median([p.get("shore_dist_m", p.get("dist_shore_m")) for p in P])
+        if "canopy" in facts:
+            s["median_canopy_over_pct"] = R.median([p.get("canopy_over_pct") for p in P])
+        if "height" in facts:
+            s["median_height_m"] = R.median([p.get("height_m") for p in P])
+        if "travel" in facts:
+            keys = sorted({k for p in P for k in p if k.startswith("minutes_to_") and not k.endswith(("_over", "_from"))})
+            if keys:
+                k = keys[0]
+                s.update(travel_label=k[len("minutes_to_"):].replace("_", " "),
+                         median_minutes=R.median([p.get(k) for p in P]),
+                         beyond_bands=sum(1 for p in P if p.get(k) is None))
+        topics = [f for f in facts if f in ("flood", "elevation", "shore", "canopy", "travel", "height")]
+        s["insights"] = (R.insights(s, topics, unit) if topics
+                         else [R._fmt(R.conf()["insights"]["count"], n=f"{n:,}", unit=unit)])
+        return self._env(tool, status="ok", result=Result(geojson=feature_collection(feats), metrics=s),
                          confidence=1.0,
-                         method="Spatial/attribute predicates evaluated in EPSG:32617 (distances to layer unions"
-                                + ("; travel-time areas = union of Valhalla isochrones from the origins" if iso_info else "")
-                                + ")",
-                         limits=limits, sources=sources, steps=t.steps)
+                         method="WHY line per feature from its own properties (conf/risk.json why); insights are built "
+                                "only from the numbers in these metrics"
+                                + ("; facts measured: " + ", ".join(measurable) if measurable else ""),
+                         limits=info.get("_limits", []), sources=info.get("_sources", []), steps=t.steps)
+
+    @staticmethod
+    def _risk_pass(p: dict[str, Any], where: dict[str, Any], info: dict[str, Any]) -> bool:
+        if p.get("kind") in ("dock", "dock_link"):
+            return True  # supplementary geometry of a derived house; follows its house (planner drops orphans)
+
+        def rng(val, spec) -> bool:
+            if val is None:
+                return False  # unmeasured never passes (counted in metrics.risk)
+            spec = spec if isinstance(spec, dict) else {"min": spec}
+            if spec.get("min") is not None and float(val) < float(spec["min"]):
+                return False
+            if spec.get("max") is not None and float(val) > float(spec["max"]):
+                return False
+            if spec.get("lt") is not None and float(val) >= float(spec["lt"]):
+                return False
+            if spec.get("gt") is not None and float(val) <= float(spec["gt"]):
+                return False
+            return True
+
+        fz = where.get("in_flood_zone")
+        if fz is not None:
+            kind = fz.get("kind", "any") if isinstance(fz, dict) else (fz if isinstance(fz, str) else "any")
+            k = p.get("flood_kind")
+            ok = {"100yr": k == "100yr", "500yr": k in ("100yr", "500yr"), "500yr_only": k == "500yr",
+                  "any": k in ("100yr", "500yr"), "none": k is None and p.get("flood_covered", True)}.get(kind, False)
+            if not ok:
+                return False
+        if where.get("within_m_of_shore") is not None:
+            m = where["within_m_of_shore"]
+            m = m.get("m") if isinstance(m, dict) else m
+            if p.get("shore_dist_m") is None or float(p["shore_dist_m"]) > float(m):
+                return False
+        for key, prop in (("canopy_over_pct", "canopy_over_pct"), ("elevation_above_flood_m", "elev_above_bfe_m"),
+                          ("slope_deg", "slope_deg"), ("height_m", "height_m")):
+            if where.get(key) is not None and not rng(p.get(prop), where[key]):
+                return False
+        return True
 
     # ------------------------------------------------------------------ places + travel time (Phase 5)
     @staticmethod
     def _pc() -> dict[str, Any]:
-        return json.loads((config.SENSES_PATH.parent / "places_categories.json").read_text())
+        """conf/places_categories.json + the risk categories of conf/risk.json (fire stations, marinas, ...)."""
+        pc = json.loads((config.SENSES_PATH.parent / "places_categories.json").read_text())
+        rp = config.SENSES_PATH.parent / "risk.json"
+        if rp.exists():
+            extra = {k: v for k, v in json.loads(rp.read_text()).get("categories", {}).items() if not k.startswith("_")}
+            pc["categories"] = {**pc["categories"], **extra}
+        return pc
 
     def resolve_category(self, text: str) -> tuple[str, dict[str, Any]] | None:
         t = text.lower().strip()

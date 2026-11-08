@@ -84,6 +84,7 @@ use, but nothing below is in use yet unless it is listed above. Each item's attr
 | TorchGeo (code) | MIT | "TorchGeo © Microsoft Corporation / TorchGeo contributors, MIT License" |
 | TorchGeo Tile2Vec NAIP weights | MIT | "Tile2Vec (Jean et al., 2019), MIT License" |
 | TiTiler / rio-tiler | MIT / BSD-3-Clause | "TiTiler © Development Seed (MIT); rio-tiler (BSD-3-Clause)" |
+| SciPy (display-mosaic build only: `scripts/heavy/build_mosaic.py`, distance transform + bilinear sampling; already pinned in `scripts/heavy/requirements-heavy.txt`). No new dependency: the mosaic uses rasterio/GDAL (COG + JPEG), NumPy, Shapely, rio-tiler, morecantile (MIT) | BSD-3-Clause | "SciPy © SciPy developers, BSD 3-Clause" |
 | PDAL | BSD | "PDAL © Hobu, Inc., BSD License" |
 | USGS 3DEP lidar (`s3://usgs-lidar-public`, EPT) | US Government Public Domain | "Map services and data available from U.S. Geological Survey, National Geospatial Program." |
 | Valhalla / OSRM | MIT / BSD-2-Clause | "Valhalla contributors (MIT)" / "Project OSRM (BSD-2-Clause)" + "© OpenStreetMap contributors" on routes |

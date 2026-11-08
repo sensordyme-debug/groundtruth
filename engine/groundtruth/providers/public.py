@@ -218,6 +218,74 @@ class PublicDataProvider(DataProvider):
         return self.read_grid((x0, y0, x1, y1), year, gsd_m=g)
 
     def render_tile(self, year: int, z: int, x: int, y: int, size: int = 256) -> bytes | None:
+        """Web-Mercator PNG display tile. Returns None when the tile cannot be rendered locally (the caller then falls
+        back to Planetary Computer, unless offline) and b"" when no imagery covers the tile.
+
+        1) When the colour-balanced, feathered display mosaic (``data/tiles/mosaic/<data_versions["mosaic"]>/<year>/``,
+           built by ``scripts/heavy/build_mosaic.py``) covers the WHOLE tile, the tile is rendered from it
+           (``GROUNDTRUTH_MOSAIC=0`` turns this off). Display only: ``read_grid``/``get_imagery`` keep reading raw scenes.
+        2) Otherwise the raw local scene COGs (``render_tile_raw``)."""
+        if os.environ.get("GROUNDTRUTH_MOSAIC", "1") == "1":
+            png = self.render_tile_mosaic(year, z, x, y, size)
+            if png is not None:
+                return png
+        return self.render_tile_raw(year, z, x, y, size)
+
+    def _mosaic_index(self, year: int) -> dict[str, Any] | None:
+        """{block_m, cells: {(i, j): path}, version} for a year's display mosaic, or None (cached per version)."""
+        ver = config.data_version("mosaic")
+        cache = self.__dict__.setdefault("_mosaic_cache", {})
+        if (ver, year) not in cache:
+            root = self.data / "tiles" / "mosaic" / ver / str(year)
+            idx = None
+            if (root / "meta.json").exists():
+                m = json.loads((root / "meta.json").read_text())
+                if not m.get("partial"):
+                    idx = {"version": ver, "block_m": float(m["grid"]["block_m"]),
+                           "cells": {(b["i"], b["j"]): root / b["file"] for b in m["blocks"]}}
+            cache[(ver, year)] = idx
+        return cache[(ver, year)]
+
+    def render_tile_mosaic(self, year: int, z: int, x: int, y: int, size: int = 256) -> bytes | None:
+        """Tile from the display mosaic; None when the mosaic is absent or does not cover the whole tile."""
+        idx = self._mosaic_index(year)
+        if idx is None:
+            return None
+        import math
+
+        import morecantile
+        from rio_tiler.errors import TileOutsideBounds
+        from rio_tiler.io import Reader
+        from rio_tiler.mosaic import mosaic_reader
+        from rio_tiler.mosaic.methods import FirstMethod
+
+        from groundtruth.geo import WGS84, transformer
+
+        tb = morecantile.tms.get("WebMercatorQuad").bounds(morecantile.Tile(x, y, z))
+        x0, y0, x1, y1 = transformer(WGS84, MEASURE_CRS).transform_bounds(tb.left, tb.bottom, tb.right, tb.top,
+                                                                          densify_pts=21)
+        bm = idx["block_m"]
+        paths = []
+        for i in range(math.floor(x0 / bm), math.floor(x1 / bm) + 1):
+            for j in range(math.floor(y0 / bm), math.floor(y1 / bm) + 1):
+                p = idx["cells"].get((i, j))
+                if p is None or not p.exists():
+                    return None
+                paths.append(p)
+
+        def tiler(path, tx, ty, tz, **kw):
+            with Reader(str(path)) as src:  # 3-band JPEG COG with an internal mask: no nodata value
+                return src.tile(tx, ty, tz, tilesize=size, **kw)
+
+        try:
+            img, _ = mosaic_reader(paths, tiler, x, y, z, pixel_selection=FirstMethod(), threads=0)
+        except Exception as e:
+            if isinstance(e, TileOutsideBounds) or type(e).__name__ == "EmptyMosaicError":
+                return b""
+            raise
+        return img.render(img_format="PNG")
+
+    def render_tile_raw(self, year: int, z: int, x: int, y: int, size: int = 256) -> bytes | None:
         """Web-Mercator PNG tile from the LOCAL COG cache via rio-tiler (TiTiler's tiling engine), scenes composited in
         priority order (first valid pixel wins). Returns None when any scene under the tile is not local (the caller
         then falls back to Planetary Computer, unless offline) and b"" when no scene covers the tile."""

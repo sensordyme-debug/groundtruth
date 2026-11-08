@@ -604,6 +604,18 @@ def ui_index() -> Response:
     return JSONResponse({"ok": True, "ui": "not built (cd web/app-v2 && npm run build)", "classic": "/classic"})
 
 
+@app.get("/s/{sid}")
+def ui_session(sid: str) -> Response:  # deep link to a saved session: the app reads the id from the URL
+    return ui_index()
+
+
+from api.point_api import router as _point_router  # noqa: E402
+from api.sessions import router as _sessions_router  # noqa: E402
+
+app.include_router(_sessions_router)
+app.include_router(_point_router)
+
+
 @app.get("/v2assets/{path:path}")
 def ui_v2_assets(path: str) -> Response:
     p = (_V2 / "v2assets" / path).resolve()

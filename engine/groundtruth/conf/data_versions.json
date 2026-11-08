@@ -6,5 +6,6 @@
   "routing": "v1",
   "inventory": "v1",
   "openvocab_cache": "v1",
-  "derived": "v1"
+  "derived": "v1",
+  "risk": "v1"
 }
