@@ -8,11 +8,11 @@ from pathlib import Path
 L = [
     # ---- API integrations (Part 3, Part 20)
     ("API", "Foursquare client (Search, Details, Match, Ask; auth + version header)", "GREEN", "engine/groundtruth/places/foursquare.py; mocked tests in tests/test_places_providers.py (50 pass)"),
-    ("API", "Foursquare real authentication tested", "BLOCKED", "FOURSQUARE_API_KEY not installed; live test skips (test_live_foursquare_search)"),
+    ("API", "Foursquare real authentication tested", "GREEN", "live test passed 2026-11-08 with the owner's key; live search returned listings (keys never printed)"),
     ("API", "Yelp client (Search, Match, Details, Reviews count/rating, Autocomplete; Bearer key, Client ID never sent)", "GREEN", "places/yelp.py; mocked tests"),
-    ("API", "Yelp real authentication tested", "BLOCKED", "YELP_API_KEY not installed; test_live_yelp_search skips"),
+    ("API", "Yelp real authentication tested", "GREEN", "live test passed 2026-11-08; live search returned listings"),
     ("API", "Google client (Places New Text Search/Details, Geocoding, Address Validation flag, probe)", "GREEN", "places/google.py; mocked tests; disabled by default (owner rule + non-Google-map terms)"),
-    ("API", "Google real authentication + enabled-API inspection", "BLOCKED", "GOOGLE_MAPS_API_KEY not installed; provider disabled pending decision A-items"),
+    ("API", "Google real authentication + enabled-API inspection", "GREEN", "probe 2026-11-08: Places (New) ok; Geocoding + Address Validation return auth (not enabled on the key); provider stays disabled by policy"),
     ("API", "Provider errors handled (401/403 no retry, 5xx, timeouts)", "GREEN", "tests/test_places_providers.py"),
     ("API", "Rate limits handled (429 + Retry-After, per-provider limiter)", "GREEN", "places/base.py; mocked 429-with-retry tests"),
     ("API", "Usage ledger (provider, endpoint, status, latency, retries, est. cost, no secrets)", "GREEN", "data/app/v1/provider_usage.jsonl; test asserts the key never appears in the ledger"),
@@ -20,12 +20,12 @@ L = [
     ("API", "Attribution + terms documented", "GREEN", "docs/compliance/API_TERMS_REVIEW.md, docs/API_PROVIDER_MATRIX.md"),
     ("API", ".env.example placeholders; .env git-ignored; no secrets committed", "GREEN", ".env.example; .gitignore; history scan of 80 commits: 0 hits (docs/SECURITY_AUDIT.md)"),
     ("Places", "Unified PlaceRecord with nullable fields + provider extras kept separately", "GREEN", "places/base.py PlaceRecord"),
-    ("Places", "Cross-provider deduplication (distance + name/address; similar names apart never merged)", "GREEN", "places/resolve.py; tests/test_places_resolve.py"),
+    ("Places", "Cross-provider deduplication (distance + name/address; similar names apart never merged)", "GREEN", "places/resolve.py; tests; live run found a bar/restaurant category mismatch blocking a true match: fixed with category families + regression test"),
     ("Places", "Provider selection + per-provider failure isolation (one fails, others return; partial)", "GREEN", "places/orchestrate.py; tests/test_places_orchestrate.py"),
     ("Places", "Provider results validated against the requested geography; invalid coordinates dropped, never invented", "GREEN", "orchestrate.py; orchestrate tests"),
     ("Places", "Corroboration ≠ verification stated; provider data labelled provider-reported", "GREEN", "resolve.py docs; feature provenance 'provider_reported'; UI badge"),
     ("Places", "People-data policy before any provider call", "GREEN", "api/places_api.py; tests/test_places_policy.py"),
-    ("Places", "Provider data inside investigations (optional step, skipped when no key)", "YELLOW", "investigate.py search_providers; verified skipping live; never run with a real key"),
+    ("Places", "Provider data inside investigations (optional step, skipped when no key)", "GREEN", "live investigation 'restaurants in Myers Park': 30 Foursquare/Yelp listings as provider-reported findings"),
     ("Places", "Yelp display requirements (logo, stars, unmodified links) in the UI", "RED", "no provider-listing UI yet; required before Yelp content is shown (API_TERMS_REVIEW)"),
     # ---- Geography (Part 5)
     ("Geography", "County searches use the county boundary (never a neighbourhood)", "GREEN", "geography.py; tests/test_geography.py; tests/test_investigate.py::test_county_never_falls_back_to_the_map_area"),
@@ -40,7 +40,7 @@ L = [
     ("Geography", "Spatial intersections / containment tested", "GREEN", "test_geography; exact-boundary clipping evidence in investigations"),
     ("Geography", "Ambiguity disclosed (Lake Norman water vs area box, South End, …)", "GREEN", "Resolution.ambiguous + plan limitations"),
     ("Geography", "Outside-county places answered, never guessed (e.g. Gastonia)", "GREEN", "test_city_zip_radius_and_outside"),
-    ("Geography", "Street addresses resolved", "BLOCKED", "needs a geocoder: Foursquare/Yelp/Google keys absent; without one the resolver returns 'address geocoding unavailable', never a coordinate"),
+    ("Geography", "Street addresses resolved", "BLOCKED", "needs a geocoder: Google Geocoding is not enabled on the key and Google is disabled by policy; without one the resolver returns 'address geocoding unavailable', never a coordinate"),
     ("Geography", "Shore-distance phrases stay conditions, not radius scopes", "GREEN", "test_shore_distance_is_a_condition_not_an_area"),
     # ---- Investigation engine (Part 6–7)
     ("Investigation", "Objectives become validated typed plans", "GREEN", "investigate.py InvestigationPlan; 4 rejection tests"),

@@ -656,7 +656,8 @@ def _exec(s: PlanStep, eng, src, inv: Investigation, envs, feats):
     if s.op == "check_coverage":
         cov = coverage(eng, a)
         s.detail = "; ".join(f"{k}: {'yes' if v['covered'] else 'no'}" for k, v in cov.items())
-        gaps = [v["why"] for v in cov.values() if not v["covered"]]
+        need = _coverage_needs(inv.plan)
+        gaps = [v["why"] for k, v in cov.items() if not v["covered"] and k in need]
         _add_ev(inv, s, "coverage", "Data available here: " + ", ".join(k for k, v in cov.items() if v["covered"]) +
                 (". Missing: " + ", ".join(k for k, v in cov.items() if not v["covered"]) if gaps else "."),
                 measurement={k: v["covered"] for k, v in cov.items()}, strength="strong", limitations=gaps,
@@ -736,7 +737,7 @@ def _exec(s: PlanStep, eng, src, inv: Investigation, envs, feats):
             fs = _clip_to_scope(inv, s, fs, a.query)
         if fs is not None:
             s.detail = f"{len(fs)} places"
-            _add_ev(inv, s, "detection", f"{len(fs)} {a.query} listed in Overture places.", source=_src(env, "Overture"),
+            _add_ev(inv, s, "detection", f"{len(fs)} {a.query} listings in Overture places.", source=_src(env, "Overture"),
                     method=env.method[:300], measurement={"count": len(fs)}, feature_ids=[_fid(f) for f in fs],
                     strength="moderate", confidence_note="listed places (points of interest), not seen in imagery")
         return env, fs
@@ -753,7 +754,7 @@ def _exec(s: PlanStep, eng, src, inv: Investigation, envs, feats):
             raise _Skip(s.detail)
         fs = env.result.geojson["features"]
         s.detail = f"{len(fs)} listings from {', '.join(usable)}"
-        _add_ev(inv, s, "detection", f"{len(fs)} {a.query} listed by {', '.join(usable)} inside the area.",
+        _add_ev(inv, s, "detection", f"{len(fs)} {a.query} listings from {', '.join(u.title() for u in usable)} inside the area.",
                 source={"name": " / ".join(u.title() for u in usable), "url": "", "date": time.strftime("%Y-%m-%d"),
                         "licence": "provider terms (docs/compliance/API_TERMS_REVIEW.md)"},
                 method="provider search, validated against the area geometry, deduplicated across providers",
@@ -898,6 +899,29 @@ _MEASURED = {
 }
 
 
+_MODEL_OPS = {"find_derived", "find_concept", "find_like", "compare_years"}  # imagery detectors / comparisons
+_LISTING_OPS = {"find_places", "search_providers"}  # listed places (Overture / commercial providers)
+
+
+def _coverage_needs(plan: InvestigationPlan) -> set[str]:
+    """Which coverage items matter for this plan (a restaurant search doesn't need lidar or homes-with-pools)."""
+    ops = {s.op for s in plan.steps}
+    facts = {f for s in plan.steps if s.op == "explain" for f in s.args.get("facts", [])}
+    where = {k for s in plan.steps if s.op == "filter" for k in s.args.get("where", {})}
+    need = set()
+    if ops & {"find_derived", "find_concept", "find_like"}:
+        need.add("imagery 2022")
+    if "compare_years" in ops:
+        need.add("imagery 2020")
+    if "find_derived" in ops:
+        need.add("homes with pools")
+    if facts & {"elevation", "canopy", "slope", "height"} or where & {"elevation_above_flood_m", "canopy_over_pct", "slope_deg", "height_m"}:
+        need.add("lidar")
+    if "flood" in facts or "in_flood_zone" in where or "elevation_above_flood_m" in where:
+        need.add("flood maps")
+    return need
+
+
 def _filter_kind(where: dict[str, Any]) -> tuple[str, str, str]:
     if "in_flood_zone" in where:
         k = (where["in_flood_zone"] or {}).get("kind", "any") if isinstance(where["in_flood_zone"], dict) else where["in_flood_zone"]
@@ -965,14 +989,23 @@ def conclude(inv: Investigation, feats, envs) -> None:
         sup = chain[: chain.index(head) + 1]
         weakest = min(sup, key=lambda e: _RANK[e.strength])
         # a count computed over AI-detected objects is still an AI prediction (never shown as a plain fact)
-        on_model = any(e.kind == "detection" and "naip" in (e.source.get("name", "").lower()) for e in sup)
-        findings.append(Finding(id="f1", statement=head.statement, nature="model_prediction" if on_model or head.kind == "detection" else "computed",
+        ops = {st.id: st.op for st in inv.plan.steps}
+        on_model = any(e.kind == "detection" and ops.get(e.step_id) in _MODEL_OPS for e in sup)
+        listed = ops.get(head.step_id) in _LISTING_OPS
+        nature = "model_prediction" if on_model else ("provider_reported" if listed else "computed")
+        findings.append(Finding(id="f1", statement=head.statement, nature=nature,
                                 strength=weakest.strength, evidence_ids=[e.id for e in sup], feature_ids=head.feature_ids[:2000],
                                 why_strength=_why_strength(weakest)))
     for e in chain:
         if e.kind == "measurement" and e is not (counted[-1] if counted else None):
             findings.append(Finding(id=f"f{len(findings) + 1}", statement=e.statement, nature="computed", strength=e.strength,
                                     evidence_ids=[e.id], feature_ids=e.feature_ids[:2000], why_strength=_why_strength(e)))
+    ops = {st.id: st.op for st in inv.plan.steps}
+    for e in ev:
+        if ops.get(e.step_id) == "search_providers" and e.kind == "detection":
+            findings.append(Finding(id=f"f{len(findings) + 1}", statement=e.statement, nature="provider_reported",
+                                    strength=e.strength, evidence_ids=[e.id], feature_ids=e.feature_ids[:2000],
+                                    why_strength=_why_strength(e)))
     gaps = [g for e in ev if e.kind == "coverage" for g in e.limitations]
     unav = [e for e in ev if e.measurement.get("known") is not None and e.measurement.get("known", 0) < e.measurement.get("of", 0)]
     for e in unav:
