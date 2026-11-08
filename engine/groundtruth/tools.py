@@ -2211,6 +2211,8 @@ class Engine:
                summary: dict[str, Any] | None = None) -> Envelope:
         tool = "export"
         feats = geojson.get("features", [])
+        if len(feats) > 50_000:  # body cap: exports are of result sets, not bulk copies of a layer
+            return declined(tool, VERSION, f"too many features to export ({len(feats)} > 50,000)")
         t = StepTimer()
         with t.step("serialise", fmt):
             if fmt == "geojson":
@@ -2230,7 +2232,8 @@ class Engine:
                 return declined(tool, VERSION, f"unsupported format {fmt!r} (geojson, csv, pdf)")
             out = config.DATA / "out" / "exports"
             out.mkdir(parents=True, exist_ok=True)
-            name = f"export_{time.strftime('%Y%m%dT%H%M%S')}_{len(feats)}.{fmt}"
+            # unique per call (two exports in the same second no longer overwrite each other)
+            name = f"export_{time.strftime('%Y%m%dT%H%M%S')}_{len(feats)}_{uuid.uuid4().hex[:6]}.{fmt}"
             if fmt == "pdf":
                 nbytes = self._pdf(out / name, feats, title or "Groundtruth results", summary or {})
             else:

@@ -25,7 +25,13 @@ from groundtruth.tools import NOT_IMPLEMENTED, VERSION, Engine
 
 CONTRACT = "0.4"
 app = FastAPI(title="Groundtruth API", version=__version__)
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+# CORS: the app is served same-origin (the API serves the UI); cross-origin access only from local dev servers and the
+# tailnet host. Override with GROUNDTRUTH_CORS_ORIGINS (comma-separated). Was "*" (docs/SECURITY_AUDIT.md).
+_CORS = [o.strip() for o in os.environ.get("GROUNDTRUTH_CORS_ORIGINS", "").split(",") if o.strip()] or [
+    "http://127.0.0.1:8000", "http://localhost:8000", "http://127.0.0.1:5180", "http://localhost:5180",
+    "http://127.0.0.1:5173", "http://localhost:5173"]
+app.add_middleware(CORSMiddleware, allow_origins=_CORS, allow_origin_regex=r"https://[a-z0-9-]+\.[a-z0-9-]+\.ts\.net",
+                   allow_methods=["GET", "POST", "PATCH", "DELETE"], allow_headers=["Content-Type", "X-GT-Owner"])
 _provider = PublicDataProvider(download_scenes=False)
 _lock = threading.Lock()
 
@@ -628,7 +634,7 @@ for _mod in ("api.places_api", "api.validation_api"):  # optional routers (prese
 @app.get("/v2assets/{path:path}")
 def ui_v2_assets(path: str) -> Response:
     p = (_V2 / "v2assets" / path).resolve()
-    if not str(p).startswith(str((_V2 / "v2assets").resolve())) or not p.exists():
+    if not p.is_relative_to((_V2 / "v2assets").resolve()) or not p.exists():
         raise HTTPException(404)
     return FileResponse(p)
 
@@ -643,6 +649,6 @@ def ui_classic() -> Response:
 @app.get("/assets/{path:path}")
 def ui_assets(path: str) -> Response:
     p = (_DIST / "assets" / path).resolve()
-    if not str(p).startswith(str((_DIST / "assets").resolve())) or not p.exists():
+    if not p.is_relative_to((_DIST / "assets").resolve()) or not p.exists():
         raise HTTPException(404)
     return FileResponse(p)

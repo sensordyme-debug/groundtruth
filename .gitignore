@@ -20,6 +20,7 @@ web/dist/
 # Secrets (never commit)
 .env
 .env.*
+!.env.example
 *.pem
 *.key
 
