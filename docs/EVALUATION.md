@@ -47,3 +47,44 @@ tennis court 4 → 5, water tower 4 → 3, basketball court 2 → 3, cemetery 1 
 
 Other: lidar vs Overture building height (Uptown, 1,652 buildings) median |Δ| 3.9 m, r 0.73 · new since 2020 in
 Ballantyne: 17 "new", ~9 clearly new by eye · planner: plan 35/35, declines 49/49.
+
+
+## Point at anything (2026-11-08, `scripts/eval_point_find.py`, `data/out/eval_point_find.json`)
+
+Setup:
+- One click on an OSM-mapped example per type. Places were chosen away from the Lake Norman label cluster: Ballantyne for pools and parking, Steele Creek for warehouses, and the place with the most OSM solar for solar.
+- **OSM precision is a lower bound**, because OSM misses most backyard pools.
+- Eye counts come from the contact sheets `data/out/t2_<type>_<k>.png`.
+
+| Type | Raw scan: count / OSM P@24 | Calibrated: count / OSM P@24 | Eye, calibrated top 24 | Warm latency |
+|---|---|---|---|---|
+| swimming pool | 137 / 0.458 | 51 / 0.417 | **23/24** (1 tennis court) | 0.2–0.5 s (cold first scan 3.5 s) |
+| warehouse | 432 / 0.417 | 154 / 0.542 | ~22/24 (large industrial roofs) | 0.2–0.4 s (cold 2.3 s) |
+| parking lot | 70 / 0.583 | 31 / 0.375 | not eye-checked | 0.2 s (cold 1.1 s) |
+| solar installation | 6 / 0.833 | 6 / 0.833 | n=6 | 0.2 s (cold 2.0 s) |
+
+The earlier Lake Norman click (on a house) returned 7,137 objects raw and **1,160 calibrated**. A cold scan of that 100 km² area takes 21 s; warm it takes 0.8–2.3 s.
+
+**Refining with "Not this":**
+- **Before the fix,** one hard negative collapsed every set (pools 137 → 3).
+- **After the fix,** "not this" is a soft scan negative plus a patch-level rejection:
+  - pools: 3 refines → 15 results, OSM 0.733;
+  - warehouses: 3 refines → 47, OSM 0.542.
+- **The refine numbers come from a flawed oracle:** the simulated user rejects the top results that OSM doesn't map, and for pools those are mostly real backyard pools. They show the mechanism works, not the quality a real user would get.
+- **Parking** still collapses to 1–3 results after one rejection, with or without calibration. **Open issue**: large flat classes need a weaker negative.
+- **Next fix:** per-type negative weight, plus a human-reviewed refine benchmark.
+
+## Investigations (2026-11-08, `scripts/bench_investigations.py`)
+
+See docs/INTELLIGENCE_BENCHMARK.md. Results:
+- 12/12 expected status, 12/12 expected plan, 12/12 deterministic.
+- 2/2 people declines.
+- Flagship: 0.86–1.7 s total, 0.4–0.8 s to the first result.
+
+Flagship numbers on real data (Lake Norman):
+- 946 homes with pools.
+- 20 touch a FEMA 100-year flood zone (all AE).
+- The height above the base flood elevation is known for 13 of the 20, median 0.5 m; 7 have no published BFE.
+- Follow-up "less than 1 m above": 12 of 20.
+- Lakefront-only variant: 19 of 367.
+- These depend on derived v1, whose precision is **not re-measured**, so the headline finding is graded "weak".

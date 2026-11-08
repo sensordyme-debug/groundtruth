@@ -151,3 +151,51 @@ source-layer = layer). NAIP tiles add the `X-Tile-Source` header (`local-cog` \|
   - Envelope as above; routes `/api/v1/tools/{tool}`, `/health`, `/tools`, `/chips`, `/layers`; `/events` reserved.
   - Ids `chip_id` and `chip_id#cell` on an 8×8 cell grid (index format v3, `chips224s192-g0.6-v3c8p192`).
   - `outline` declined with `not_implemented`.
+
+
+## Investigations (v0.6, additive; tool envelopes are unchanged)
+
+Plain JSON (not an envelope): an investigation aggregates many tool envelopes. Full design: docs/INTELLIGENCE_ARCHITECTURE.md.
+
+| Route | Body / params | Returns |
+|---|---|---|
+| `POST /api/v1/investigations` | `{objective, context}`; header `X-GT-Owner` (anonymous browser id) | the Investigation; or `{fallback: "chat", id}` for a plain search (use `/agent/run`) |
+| `GET /api/v1/investigations` | header `X-GT-Owner` | this browser's investigations: `[{id, objective, status, updated, scope}]` |
+| `GET /api/v1/investigations/{id}` | `?features=1` (only once finished) | the Investigation (poll while `status` is planning or running) |
+| `POST /api/v1/investigations/{id}/cancel` | — | cooperative: the running step finishes, later steps are `skipped` |
+| `GET /api/v1/investigations/{id}/features/{fid}/evidence` | — | `{found, why, properties, evidence[], missing[]}` for one result |
+| `POST /api/v1/investigations/{id}/feedback` | `{feature_id, verdict: confirm/reject, note}` | records human evidence + appends `data/app/v1/feedback/feedback.jsonl` |
+| `GET /api/v1/investigations/{id}/report.md` | — | the Markdown report |
+
+`context` keys (all optional):
+- `area`: `{place}` / `{bbox}` / `{geojson}`
+- `year`
+- `mode`
+- `rejected`: feature ids
+- `previous`: the investigation id that a follow-up starts from
+
+**Investigation**
+- Fields: `{id, status, objective, plan, question, suggestions, events[], evidence[], findings[], contradictions[], summary, result{features, metrics}, result_step, previous, versions{investigate, data}, declined_reason}`.
+- `status` is one of planning, running, done, partial, failed, cancelled, declined, needs_input.
+
+**plan**
+- Fields: `{objective, scope, targets[], constraints[], time, questions[], steps[], limitations[], planner}`.
+- Each step: `{id, op, args, depends_on[], label, why, status: queued|running|done|failed|blocked|skipped, ms, detail, error, count}`.
+- `op` must be one of the `OPS` keys in `investigate.py`; arguments are validated per operation before anything runs.
+
+**Evidence**
+- Fields: `{id, step_id, kind, statement, source{name, url, date, licence}, method, measurement{…units in keys}, feature_ids[], strength, confidence_note, limitations[]}`.
+- `kind` is one of scope, coverage, detection, association, spatial_intersection, measurement, temporal, ordering, human.
+
+**Finding**
+- Fields: `{id, statement, nature, strength, why_strength, evidence_ids[], feature_ids[]}`.
+- `nature` is one of computed, model_prediction, observed, inference, gap.
+- `strength` is one of strong, moderate, weak, insufficient. It is the weakest strength along the finding's evidence chain; it is never a probability.
+
+## Point at anything (v0.6)
+
+`POST /api/v1/point/find`:
+- Body: `{positives: [{lon, lat} | {bbox} | {id}], negatives: [...], area, year, k, outline_top, calibrate=true}`.
+- Returns a `find_all` envelope (tool `point_find`).
+- `metrics` adds `examples`, `negatives`, `resolved`, `calibration{threshold, bg_quantile, bg_samples, before, after, ms}`, `count_before_calibration`, `exhaustive`.
+- Each kept feature carries `sim_example` / `sim_threshold` (uncalibrated cosine similarities).

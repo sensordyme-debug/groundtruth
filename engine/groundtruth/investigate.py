@@ -688,7 +688,8 @@ def _exec(s: PlanStep, eng, src, inv: Investigation, envs, feats):
             known = sum(1 for f in prim if f["properties"].get("elev_above_bfe_m") is not None)
             _add_ev(inv, s, "measurement", f"Height above the base flood elevation is known for {known} of {len(prim)}.",
                     source=_src(env, "3DEP"), method="lidar ground (lowest 10 % within 2 m of the outline) minus FEMA's static BFE",
-                    measurement={"known": known, "of": len(prim), **{f"status_{k}": v for k, v in st.items()}},
+                    measurement={"known": known, "of": len(prim), "unavailable": len(prim) - known,
+                                 **{f"status_{k}": v for k, v in st.items()}},
                     feature_ids=[_fid(f) for f in prim if f["properties"].get("elev_above_bfe_m") is not None],
                     strength="moderate" if known else "insufficient",
                     confidence_note="lidar 2016–2019 vs FEMA effective maps; ground height, not floor height",
@@ -830,7 +831,7 @@ def conclude(inv: Investigation, feats, envs) -> None:
     gaps = [g for e in ev if e.kind == "coverage" for g in e.limitations]
     unav = [e for e in ev if e.measurement.get("known") is not None and e.measurement.get("known", 0) < e.measurement.get("of", 0)]
     for e in unav:
-        miss = e.measurement["of"] - e.measurement["known"]
+        miss = e.measurement.get("unavailable", e.measurement["of"] - e.measurement["known"])
         findings.append(Finding(id=f"f{len(findings) + 1}", statement=f"{miss} of {e.measurement['of']} have no published base "
                                 "flood elevation here, so their height above it is unavailable.", nature="gap",
                                 strength="insufficient", evidence_ids=[e.id], why_strength="FEMA did not publish the input"))
