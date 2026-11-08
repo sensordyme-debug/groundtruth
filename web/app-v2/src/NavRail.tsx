@@ -1,11 +1,11 @@
 // Global navigation rail: a narrow, always-visible column. Every item does something real (no Monitor item: there is
 // no scheduler or data refresh behind it yet, so it would be a dead button).
-import { Bookmark, Compass, FileText, Home, MessagesSquare, Settings } from "lucide-react";
+import { Bookmark, Compass, FileText, Home, MessagesSquare, Settings, ShieldCheck } from "lucide-react";
 
-export type View = "investigations" | "reports" | "saved";
+export type View = "investigations" | "reports" | "saved" | "validate";
 type Props = {
   view: View; sidebarOpen: boolean; onHome: () => void; onView: (v: View) => void; onDiscover: () => void;
-  onSettings: () => void; settingsOpen: boolean;
+  onSettings: () => void; settingsOpen: boolean; validating: boolean; onValidate: () => void;
 };
 const I = { size: 18, strokeWidth: 1.5 } as const;
 
@@ -27,6 +27,7 @@ export default function NavRail(p: Props) {
       {item(false, "Discover", <Compass {...I} />, p.onDiscover, "rail-discover")}
       {item(p.sidebarOpen && p.view === "reports", "Reports", <FileText {...I} />, () => p.onView("reports"), "rail-reports")}
       {item(p.sidebarOpen && p.view === "saved", "Saved", <Bookmark {...I} />, () => p.onView("saved"), "rail-saved")}
+      {item(p.validating, "Validate", <ShieldCheck {...I} />, p.onValidate, "rail-validate")}
       <span style={{ flex: 1 }} />
       {item(p.settingsOpen, "Settings", <Settings {...I} />, p.onSettings, "rail-settings")}
     </nav>

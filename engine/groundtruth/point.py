@@ -112,7 +112,8 @@ def _cell_vecs(index, ids: Sequence[str]):
 
 
 def calibrate(index, feats: list[dict[str, Any]], positives: Sequence[str], negatives: Sequence[str],
-              bbox: Sequence[float] | None, year: int, conf: dict[str, Any]) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+              bbox: Sequence[float] | None, year: int, conf: dict[str, Any],
+              use_threshold: bool = True) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Per-click calibration (no labels, no training): sample background patches from the same area, measure how similar
     they are to the examples, and keep only candidates above the ``bg_quantile`` of that background and closer to the
     examples than to any "not this" example. Each kept feature records ``sim_example`` and ``sim_threshold`` (cosine
@@ -122,6 +123,8 @@ def calibrate(index, feats: list[dict[str, Any]], positives: Sequence[str], nega
     from groundtruth.tiler import chips_for_bbox
     P = _cell_vecs(index, positives)
     if P is None or not feats:
+        return feats, {"calibrated": False}
+    if not use_threshold and not negatives:
         return feats, {"calibrated": False}
     N = _cell_vecs(index, negatives)
     rng = np.random.default_rng(int(conf.get("seed", 7)))
@@ -135,7 +138,7 @@ def calibrate(index, feats: list[dict[str, Any]], positives: Sequence[str], nega
     pick_c = rng.integers(0, index.grid * index.grid, n)
     bg = _unit(np.stack([index.cells(int(r))[int(c)] for r, c in zip(pick_r, pick_c)]))
     bg_sim = (bg @ P.T).max(axis=1)
-    tau = float(np.quantile(bg_sim, float(conf.get("bg_quantile", 0.995))))
+    tau = float(np.quantile(bg_sim, float(conf.get("bg_quantile", 0.995)))) if use_threshold else -1.0
     margin = float(conf.get("neg_margin", 0.0))
     from groundtruth.tools import parse_example
     kept = []

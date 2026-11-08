@@ -254,6 +254,32 @@ export class GtMap {
 
   zoom(by: number) { this.map.easeTo({ zoom: this.map.getZoom() + by, duration: 180 }); }
 
+  // ---------------- Validation Studio: the AI prediction (dashed) and the reviewer's polygon (solid white) ----------
+  async showReview(pred: any | null, human: any | null) {
+    await this.ready;
+    const m = this.map;
+    if (!m.getSource("review")) {
+      m.addSource("review", { type: "geojson", data: EMPTY as any });
+      m.addLayer({ id: "review-pred-fill", type: "fill", source: "review", filter: ["==", ["get", "who"], "ai"],
+        paint: { "fill-color": ACCENT, "fill-opacity": 0.12 } });
+      m.addLayer({ id: "review-pred", type: "line", source: "review", filter: ["==", ["get", "who"], "ai"],
+        paint: { "line-color": ACCENT, "line-width": 2.5, "line-dasharray": [2, 1.5] } });
+      m.addLayer({ id: "review-human-halo", type: "line", source: "review", filter: ["==", ["get", "who"], "human"],
+        paint: { "line-color": HALO, "line-width": 5, "line-opacity": 0.4 } });
+      m.addLayer({ id: "review-human", type: "line", source: "review", filter: ["==", ["get", "who"], "human"],
+        paint: { "line-color": "#ffffff", "line-width": 2.5 } });
+    }
+    const fs = [pred && { type: "Feature", geometry: pred, properties: { who: "ai" } },
+      human && { type: "Feature", geometry: human, properties: { who: "human" } }].filter(Boolean);
+    (m.getSource("review") as GeoJSONSource).setData({ type: "FeatureCollection", features: fs } as any);
+    if (pred) {
+      const b = geomBbox(pred.type === "Point" ? { type: "MultiPoint", coordinates: [pred.coordinates] } : pred);
+      const pad = 0.00035;
+      this.map.fitBounds([[b[0] - pad, b[1] - pad], [b[2] + pad, b[3] + pad]], { padding: 40, maxZoom: 19.2,
+        duration: reduced() ? 0 : 700, easing: CAMERA_EASE });
+    }
+  }
+
   // ---------------- camera state (sessions) ----------------
   camera(): { center: [number, number]; zoom: number } {
     const c = this.map.getCenter();

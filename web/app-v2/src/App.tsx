@@ -8,6 +8,7 @@ import { Card, StepLine, bboxAround, cardFor, centroid, currentEnv, featId, fmt,
 import Sidebar, { ReportRow, Seg } from "./Sidebar";
 import NavRail, { View } from "./NavRail";
 import InvestigationBlock, { Inv, InvEvidence, Bars } from "./Investigation";
+import ValidationStudio from "./ValidationStudio";
 import Composer, { ComposerHandle, DrawKind, tagsFor } from "./Composer";
 import { Area, Mode, Pin, Prefs, SavedArea, SessionRow, Year, api, loadPrefs, owner as ownerFn, ruleTitle, savePrefs, units } from "./store";
 import * as I from "./icons";
@@ -42,6 +43,7 @@ export default function App() {
   const [narrow, setNarrow] = useState(() => innerWidth < 900);
   const [drawer, setDrawer] = useState(false);
   const [view, setView] = useState<View>("investigations");
+  const [validating, setValidating] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [reports, setReports] = useState<ReportRow[]>([]);
   const [query, setQuery] = useState("");
@@ -618,7 +620,13 @@ export default function App() {
   return (
     <div className="gt-app">
       <NavRail view={view} sidebarOpen={sideOpen} settingsOpen={settingsOpen} onSettings={() => setSettingsOpen((o) => !o)}
-        onHome={() => resetAll(true)} onDiscover={() => { resetAll(true); setTimeout(() => document.querySelector(".gt-starters")?.scrollIntoView({ behavior: "smooth" }), 80); }}
+        validating={validating} onValidate={() => {
+          const on = !validating;
+          setValidating(on); setSel(null); setEvOpen(null);
+          if (on) { setStage("work"); void gm.current?.startImagery(); void gm.current?.setResults(null); }
+          else { void gm.current?.showReview(null, null); }
+        }}
+        onHome={() => { setValidating(false); void gm.current?.showReview(null, null); resetAll(true); }} onDiscover={() => { resetAll(true); setTimeout(() => document.querySelector(".gt-starters")?.scrollIntoView({ behavior: "smooth" }), 80); }}
         onView={(v) => { if (sideOpen && view === v) closeSide(); else { setView(v); openSide(); } }} />
       {settingsOpen && (
         <div className="gt-pop gt-settings gt-settings-rail" role="dialog" aria-label="Settings" onMouseLeave={() => setSettingsOpen(false)}>
@@ -659,7 +667,8 @@ export default function App() {
               </div>
             </div>
 
-            <div ref={msgsEl} data-testid="msgs" style={{ flex: 1, overflowY: "auto", padding: "8px 22px 24px", display: "flex", flexDirection: "column", gap: 16 }}>
+            {validating && <ValidationStudio map={gm.current} onToast={setToast} />}
+            <div ref={msgsEl} data-testid="msgs" hidden={validating} style={{ flex: 1, overflowY: "auto", padding: "8px 22px 24px", display: "flex", flexDirection: "column", gap: 16 }}>
               {msgs.map((m, i) => {
                 if (m.role === "user") return (
                   <div key={m.id} className="gt-in" style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
@@ -772,7 +781,7 @@ export default function App() {
               })}
             </div>
 
-            <div style={{ padding: "10px 16px 16px" }}>
+            <div style={{ padding: "10px 16px 16px", display: validating ? "none" : undefined }}>
               <Composer ref={comp2} variant="panel" inputId="gt-ask-2" placeholder="Ask a follow-up, or investigate further…" value={landing ? "" : input}
                 onChange={setInput} onSend={() => void send(input)} {...composerProps} />
               <div style={{ fontSize: 12, color: "#6b6b68", marginTop: 8, paddingLeft: 4 }}>NAIP {year} · Mecklenburg County</div>

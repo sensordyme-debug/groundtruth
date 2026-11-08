@@ -51,23 +51,28 @@ def point_find(b: PointFindIn) -> JSONResponse:
     # "not this" clicks go to the scan as SOFT negatives (a hard negative there drops every object whose patch is closer
     # to it than to the example, which wiped out true matches: 137 → 3 after one click); the calibration below then
     # rejects, patch by patch, results closer to a "not this" example than to the examples
+    # the scan sees only the examples: "not this" is applied AFTER, result by result (a negative inside the scan, even a
+    # soft one, removed nearly every parking lot: a rejected stretch of asphalt looks like all of them)
     if place or bbox:
-        env = e.find_all(pos, [], place=None if bbox else place, bbox=bbox, concept=None, outline_top=ot, soft_exclude=neg)
+        env = e.find_all(pos, [], place=None if bbox else place, bbox=bbox, concept=None, outline_top=ot)
     else:
-        env = e.find_all(pos, [], k=b.k, concept=None, outline_top=min(ot, 60), soft_exclude=neg)
+        env = e.find_all(pos, [], k=b.k, concept=None, outline_top=min(ot, 60))
     cal = {"calibrated": False}
-    if env.status != "declined" and env.result and b.calibrate:
+    if env.status != "declined" and env.result and (b.calibrate or neg):
         t1 = time.perf_counter()
         box = bbox or (e.place_bbox(place) if place else None)
-        fs, cal = calibrate(e.index, env.result.geojson["features"], pos, neg, box, e.year, fl)
+        fs, cal = calibrate(e.index, env.result.geojson["features"], pos, neg, box, e.year, fl, use_threshold=b.calibrate)
         cal["ms"] = round((time.perf_counter() - t1) * 1000, 1)
         env.result.geojson["features"] = fs
         m = env.result.metrics
         m["count_before_calibration"] = m.get("count_detected", m.get("count"))
         m["count_detected"] = m["count"] = len(fs)
-        env.limits.append(f"kept only results more similar to your examples than {float(fl['bg_quantile']) * 100:g} % of "
-                          f"{fl['bg_samples']} background patches sampled from the same area (threshold "
-                          f"{cal.get('threshold')}); similarities are uncalibrated, not probabilities")
+        if b.calibrate:
+            env.limits.append(f"kept only results more similar to your examples than {float(fl['bg_quantile']) * 100:g} % of "
+                              f"{fl['bg_samples']} background patches sampled from the same area (threshold "
+                              f"{cal.get('threshold')}); similarities are uncalibrated, not probabilities")
+        if neg:
+            env.limits.append(f"dropped results closer to one of your {len(neg)} 'not this' examples than to your examples")
     if env.status != "declined" and area.get("geojson") and env.result:
         fs = clip_to(env.result.geojson["features"], area["geojson"])
         env.result.geojson["features"] = fs
