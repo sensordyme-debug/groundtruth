@@ -109,3 +109,21 @@ populations are in `docs/VALIDATION_STUDIO.md` and `data/validation/v1/manifest.
 **0 human reviews so far.** Precision, IoU, calibration and recall from the Validation Studio are therefore not yet
 available. The metrics endpoint returns `null` precision with `n_judged = 0` and `recall: "not measurable"` for every
 class. No review has been entered by the engineer who built the tool; reviews must come from people using the Studio.
+
+
+## 3. Find like this: refinement after the negatives change (2026-11-08, end of sprint)
+
+`scripts/eval_point_find.py`, calibrated runs. "Not this" examples are now applied after the scan, result by result, instead of inside the scan:
+
+| Type | 0 refines: count / OSM P@24 | 1 refine | 3 refines |
+|---|---|---|---|
+| parking lot | 31 / 0.375 | 24 / 0.417 | 17 / 0.471 |
+| warehouse | 154 / 0.542 | 134 / 0.542 | 72 / 0.625 |
+| swimming pool | 51 / 0.417 | 45 / 0.375 | 18 / 0.611 |
+
+What changed:
+- **Before** this change, a single "not this" collapsed parking to 1–3 results (and pools 137 → 3 with hard negatives).
+
+What this does and doesn't show:
+- **OSM is a lower bound.** The simulated user is an oracle that rejects the top results OSM doesn't map. For pools, many of those are real backyard pools, so the pool rows understate quality and the oracle itself is flawed.
+- **These are not human-verified improvements.** The human-reviewed refine benchmark is pending Validation Studio reviews.

@@ -4,6 +4,7 @@ Times are local (America/New_York).
 
 | time | milestone |
 |---|---|
+| 2026-11-08 07:47 | Sprint: places (FSQ/Yelp/Google, mocked; live blocked: no keys), geography resolver wired in, Validation Studio (498 samples, 0 human reviews), compliance package, security fixes; ledger 95 items: 66 GREEN, 29 not green *(free: WSL RAM 15,048 MB · VRAM used 4634 MiB, 8188 MiB · disk C: 60 GB)* |
 | 2026-11-08 06:12 | Intelligence: investigation engine + evidence ledger + workspace UI; bench 12/12 (status, plan, determinism, evidence); demo_check v3 17/17 at 3 sizes; Find like this calibrated (pool eye 23/24); audits + tech decisions written *(free: WSL RAM 16,098 MB · VRAM used 4734 MiB, 8188 MiB · disk C: 61 GB)* |
 | 2026-11-08 04:31 | Checkpoint A: web/app-v2 (approved UI) on real data; demo_check v2 31/31 at 1440x900 + 1920x1080; compare screenshots + DIFF.md *(free: WSL RAM 14,948 MB · VRAM used 4692 MiB, 8188 MiB · disk C: 61 GB)* |
 | 2026-11-08 01:10 | Competition-ready checkpoint: memory in code (API heap 5.7 → 2.9 GB; Windows free 3.2 → 4.9 GB with the API warm), refine keeps dense outlines (140/140), shadow rule A/B off, dense off in Uptown, typed demo chain < 1 s per step warm, healthy only after the chain is warm (~2 min), versioned data + DEMO_MANIFEST + rollback, tiles p95 1,172 → 88 ms (local), demo_check PASS cold / warm ×2 / offline, planner 35/35 plans + 49/49 declines, Lake Norman labels 41 → 46/51 with dense. *(free: WSL RAM 15,272 MB · VRAM used 4598 MiB, 8188 MiB · disk C: 72 GB)* |

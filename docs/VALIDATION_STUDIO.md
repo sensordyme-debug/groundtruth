@@ -231,4 +231,28 @@ Everything here is computed only from human reviews (`validation.metrics`), and 
 | parking / solar / dock | sampled where the tools returned results | precision only; dock is north-only |
 
 ## UI
-_(section reserved for the lead)_
+- **Where:** the rail's **Validate** button (shield icon) opens the Studio in the conversation panel. The sample is shown on the live map, so reviewers get real NAIP imagery with zoom and pan.
+- **Map overlays:**
+  - the AI prediction is a dashed accent outline with a light fill;
+  - the reviewer's polygon is solid white with a dark halo;
+  - the camera fits the sample, at up to z19.2.
+- **Queue:**
+  - filters for class (pool, building, parking, dock, solar), region and status (to review / reviewed / all);
+  - previous / next buttons;
+  - a progress bar ("N of 498 reviewed").
+- **Card:**
+  - class, region and holdout group, and whether the sample sits in the training-label cluster;
+  - detector and model;
+  - score, labelled uncalibrated;
+  - NAIP flight date and scene;
+  - whether the prediction is an outline or a box;
+  - the current decision.
+- **Decisions:**
+  - Accept / Reject / Uncertain / Needs review;
+  - **Draw / correct outline** (click the corners, double-click to finish), then **Save corrected outline**, which records the decision as `corrected` with the polygon;
+  - an optional note.
+- **Keys:** A accept · R reject · U uncertain · N needs review · D draw · J/K next / previous.
+- **Metrics panel:** per class, reviewed / samples, precision and its Wilson 95 % interval, and recall, which shows "not measurable" unless a census tile is complete. Two links export GeoJSON / CSV.
+- **Tests:**
+  - `scripts/studio_check.py` opens the Studio, checks the prediction is on the map and that the class filter changes the queue, and reads progress. It is **read-only**: it never submits a review, because reviews must come from people.
+  - The submission path is covered by the API tests (`tests/test_validation.py`).
