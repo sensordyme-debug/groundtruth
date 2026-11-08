@@ -1,5 +1,53 @@
 # Status for Monish
 
+## Try it now: Groundtruth Intelligence (branch `intelligence/evidence-grounded-investigation`, local commits only, not pushed)
+
+- Open http://localhost:8000/ and click **Flood exposure of homes with pools**. You'll see:
+  - the plan running live;
+  - findings graded by evidence;
+  - evidence rows, which open the inspector;
+  - **Show these 20 on the map**.
+- Click a thumbnail: the sheet shows the WHY line, its evidence and what is missing, plus **Confirm**/**Reject** (both stored as evidence).
+- Click the pill **which of those are less than 1 m above the flood elevation** (12 of 20), then **Report** (Markdown).
+- Reload: the sidebar shows **Completed** and `/s/<id>` restores the investigation.
+- Type **who owns these homes**: it is declined.
+- **Discover → Click anything** works too: one pool click gives about 23/24 pools by eye.
+- Checks:
+  - `~/.venvs/gt-browser/bin/python scripts/demo_check_v3.py` (17/17 at 3 sizes)
+  - `python3 scripts/bench_investigations.py` (12/12)
+  - `bash scripts/gt.sh pytest -q` (43)
+- Docs:
+  - `docs/INTELLIGENCE_AUDIT.md`
+  - `docs/INTELLIGENCE_ARCHITECTURE.md`
+  - `docs/INTELLIGENCE_BENCHMARK.md`
+  - `docs/GEOSPATIAL_CV_TECHNOLOGY_AUDIT.md`
+  - `docs/DEMO_DAY.md` (top section)
+  - CONTRACT / EVALUATION (new sections)
+
+### Decisions I made
+- Branched from `eaed886` (the paused WIP), not `main`, because `web/app-v2` only exists on that line.
+- The investigation compiler sits on `planner.parse`. There is no second planner, and the LLM is not involved in compiling, so plans are deterministic. Plain searches ("swimming pools") still go through the chat turn, with its pick grid.
+- Steps run sequentially. They share one GPU and engine caches that have no locks.
+- Evidence strength is graded strong / moderate / weak / insufficient, with the weakest link winning. No probability is shown anywhere. The flagship headline is **weak** because derived v1 precision is not re-measured; that is honest, and the next step is to measure it.
+- "Monitor" is left out of the navigation rail: there is no scheduler, so it would be a dead button.
+- Technology audit:
+  - GeoPandas: REJECT. Vector steps take under 0.5 s.
+  - GDAL direct: REJECT. rasterio covers it.
+  - YOLO: REJECT Ultralytics (AGPL); DEFER any permissive detector (no label base).
+  - OpenCV: DEFER until change labels exist.
+- The people policy now matches whole words. "Residential" used to be declined.
+
+### Still wrong / not done
+- The **seam mosaic** is not built (design + partial script in docs/MOSAIC.md).
+- **Derived v1 precision** (homes with pools / lakefront / dock) is not re-measured.
+- **Canopy and slope rasters** are not built, so "pools under trees" can't be answered yet.
+- **Find like this:** parking collapses after one "not this". A cold first scan of a large area takes 3–21 s.
+- **Phone layout:** the rail takes 48 px. It works but is tight.
+- `step_timeout_s` is recorded but not enforced preemptively.
+- **Windows free RAM** is about 2.4 GB with the API warm (rule: ≥ 4 GB).
+- derived v1, risk v1 and lidar v2 are not in DEMO_MANIFEST.
+
+
 ## Try it now (branch `redesign/conversational`, API on the PC)
 - **http://localhost:8000/** is the new conversational app. Click **Houses with pools**, then the pills **in Lake Norman** →
   **with lake and dock access** → **which got docks since 2020**. Click a thumbnail to open the detail sheet. Drag the

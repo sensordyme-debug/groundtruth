@@ -35,6 +35,9 @@ PEOPLE_TERMS = ("owner", "who owns", " owns ", "owned by", "who lives", "lives a
                 "income", "race", "ethnicity", "crime", "school rating", "demographic", "home address of",
                 "name of", "names of")
 NOT_IMPLEMENTED = "not_implemented"
+# T4 risk predicates for filter(where=...): each fills a per-feature property (docs/CONTRACT.md "Risk answers")
+RISK_PREDICATES = ("in_flood_zone", "within_m_of_shore", "canopy_over_pct", "elevation_above_flood_m", "slope_deg",
+                   "height_m")
 
 
 _PEOPLE_RE = __import__("re").compile(
@@ -45,7 +48,12 @@ _PEOPLE_RE = __import__("re").compile(
 def _people(query: str) -> bool:
     """People-data policy (runs BEFORE any planner or model): owners, residents, demographics, crime, school ratings."""
     q = query.lower()
-    return any(t in q for t in PEOPLE_TERMS) or bool(_PEOPLE_RE.search(q))
+    # whole words only: "resident" must not match "residential", "race" must not match "terrace" / "racetrack"
+    return bool(_PEOPLE_WORDS.search(q)) or bool(_PEOPLE_RE.search(q))
+
+
+_PEOPLE_WORDS = __import__("re").compile(r"(?<![a-z])(?:" + "|".join(
+    __import__("re").escape(t.strip()) + "s?" for t in PEOPLE_TERMS) + r")(?![a-z])")
 
 
 def load_senses() -> dict[str, Any]:
@@ -646,30 +654,56 @@ class Engine:
         return f
 
     def object_check(self, outline: dict[str, Any], concept: str | None) -> dict[str, Any]:
-        """Post-SAM object check (thresholds in conf/concepts.json "object_check"): area range, compactness and the
-        fraction of the outline's pixels in the concept colour. → {pass, reason, area_m2, compactness, colour_frac}."""
+        """Post-SAM object check (thresholds in conf/concepts.json "object_check"): area range, compactness, the
+        fraction of the outline's pixels in the concept colour, plus optional generic rules: max/min_height_m (lidar,
+        only where lidar is built), max/min_building_overlap (Overture footprints), max_green_frac (vegetation pixels)
+        and any_of (a list of alternative rule sets; at least one must pass, e.g. "on a roof OR a large ground array").
+        A PENDING box (no SAM outline yet; properties.pending_box) is checked with the concept's "verify_pending" rules
+        instead (location/colour rules on the detection's patch box; area = the scan's patch-group area, no
+        compactness, no outline refinement); without "verify_pending" a pending box is not checked (None).
+        → {pass, reason, area_m2, compactness, colour_frac, …}."""
         from groundtruth.rerank import _hsv, concept_conf
 
         cc = concept_conf(concept)
-        oc = cc.get("object_check", {})
-        rule = cc["rerank"].get("colour")
         p = outline.get("properties", {})
+        pending = bool(p.get("pending_box"))
+        oc = cc.get("verify_pending") if pending else cc.get("object_check", {})
+        if oc is None:
+            return None  # type: ignore[return-value]
+        oc = {k: v for k, v in oc.items() if not k.startswith("_")}
+        rule = cc["rerank"].get("colour")
         cache = self.__dict__.setdefault("_check_cache", {})
-        key = (outline.get("id"), concept)
+        key = (outline.get("id"), concept, pending)
         if key in cache:
             return cache[key]
         if not outline.get("geometry"):
             res = {"pass": False, "reason": "no outline"}
             cache[key] = res
             return res
+        alts = [{k: v for k, v in a.items() if not k.startswith("_")} for a in oc.get("any_of", [])]
+        wants = lambda *names: any(n in r for r in [oc, *alts] for n in names)  # noqa: E731
         area = float(p.get("area_m2", 0))
         comp = p.get("compactness")
         if comp is None:
             gm = to_measure(shape(outline["geometry"]))
             comp = 4 * np.pi * gm.area / max(gm.length ** 2, 1e-9)
-        colour_frac = colour_area = None
+        colour_frac = colour_area = green_frac = None
         refined_geom = None
-        if rule and oc.get("colour_frac_min", 0) > 0:
+        if wants("max_green_frac"):
+            from PIL import Image
+            from rasterio.features import rasterize
+            from rasterio.transform import from_origin
+
+            i = self.index.pos.get(p.get("chip_id"))
+            if i is not None:
+                img = np.asarray(Image.open(io.BytesIO(self.index.thumb_jpeg(i))).convert("RGB")).astype(np.int16)
+                x0, y0 = float(self.index.meta["x0_m"][i]), float(self.index.meta["y0_m"][i])
+                tr = from_origin(x0, y0 + config.CHIP_M, config.GSD_M, config.GSD_M)
+                gmask = rasterize([to_measure(shape(outline["geometry"]))], out_shape=img.shape[:2], transform=tr) > 0
+                if gmask.any():  # vegetation = green dominates red and blue (canopy, lawn): panels and roofs are not
+                    R, G, B = img[..., 0][gmask], img[..., 1][gmask], img[..., 2][gmask]
+                    green_frac = float(((G > R + 4) & (G > B + 4)).mean())
+        if rule and any(r.get("colour_frac_min", 0) > 0 for r in [oc, *alts]):
             from PIL import Image
             from rasterio.features import rasterize, shapes
             from rasterio.transform import from_origin
@@ -684,7 +718,7 @@ class Engine:
                 if mask.any():
                     lo, hi = np.array(rule["hsv_lo"], np.float32), np.array(rule["hsv_hi"], np.float32)
                     cmask = np.all((_hsv(img) >= lo) & (_hsv(img) <= hi), -1)
-                    if oc.get("outline_by_colour"):
+                    if oc.get("outline_by_colour") and not pending:
                         # refined outline = SAM mask ∩ dilated colour pixels; keep the piece at the prompt (or the largest)
                         dil = cmask.copy()
                         for dy, dx in ((1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1)):
@@ -712,43 +746,99 @@ class Engine:
                         inside = cmask[mask]
                     colour_frac = float(inside.mean())
                     colour_area = float(inside.sum()) * config.GSD_M ** 2
-        lo_a, hi_a = oc.get("area_m2", [0, 1e12])
-        reasons = []
-        if not (lo_a <= area <= hi_a):
-            reasons.append(f"area {area:.0f} m² outside {lo_a}–{hi_a}")
-        if comp < oc.get("compactness_min", 0):
-            reasons.append(f"compactness {comp:.2f} < {oc['compactness_min']}")
-        if colour_frac is not None and colour_frac < oc.get("colour_frac_min", 0):
-            reasons.append(f"colour {colour_frac:.2f} < {oc['colour_frac_min']}")
-        if colour_area is not None and colour_area < oc.get("colour_area_min_m2", 0):
-            reasons.append(f"colour area {colour_area:.0f} m² < {oc['colour_area_min_m2']}")
         height = None
-        if oc.get("max_height_m") is not None and os.environ.get("GROUNDTRUTH_HEIGHT_CHECK", "1") == "1":
+        if wants("max_height_m", "min_height_m") and os.environ.get("GROUNDTRUTH_HEIGHT_CHECK", "1") == "1":
             from groundtruth import lidar
 
             gw = shape(refined_geom or outline["geometry"])
             lp = lidar.place_for(gw.bounds)
-            if lp:  # pools sit at ground level; a blue roof or a shadowed roof edge has height
+            if lp:  # only where lidar is built; elsewhere the height rules are not applied
                 v = lidar.values(to_measure(gw), lp)
                 if len(v):
                     height = float(np.median(v))
-                    if height > float(oc["max_height_m"]):
-                        reasons.append(f"height {height:.1f} m > {oc['max_height_m']} (lidar)")
         bover = None
-        if oc.get("max_building_overlap") is not None:  # on a building footprint → a roof (works without lidar)
-            gm_ = to_measure(shape(refined_geom or outline["geometry"]))
-            bover = self._building_overlap(gm_)
-            if bover > float(oc["max_building_overlap"]):
-                reasons.append(f"{100 * bover:.0f}% on a building footprint (Overture)")
+        if wants("max_building_overlap", "min_building_overlap"):  # Overture footprints (works without lidar)
+            bover = self._building_overlap(to_measure(shape(refined_geom or outline["geometry"])))
+        rect = host_cover = host_contrast = None
+        if not pending and wants("rectangularity_min"):  # outline area / its minimum rotated rectangle
+            gr = to_measure(shape(refined_geom or outline["geometry"]))
+            rect = float(gr.area / max(gr.minimum_rotated_rectangle.area, 1e-9))
+        if not pending and wants("max_host_cover", "min_host_contrast"):  # vs the building footprint(s) it sits on
+            gh = to_measure(shape(refined_geom or outline["geometry"]))
+            host = self._host_geom(gh)
+            if host is not None:
+                host_cover = float(gh.area / max(host.area, 1e-9))
+                i_ = self.index.pos.get(p.get("chip_id"))
+                if wants("min_host_contrast") and i_ is not None:
+                    # on a roof whose remainder is not visible in the chip: unmeasurable counts as no contrast (strict)
+                    host_contrast = self._host_contrast(i_, gh, host) or 0.0
+        vals = {"area": area, "comp": None if pending else comp, "colour_frac": colour_frac, "colour_area": colour_area,
+                "green_frac": green_frac, "height": height, "bover": bover, "rect": rect, "host_cover": host_cover,
+                "host_contrast": host_contrast}
+        reasons = self._check_rules(oc, vals)
+        if alts:
+            alt_r = [self._check_rules(a, vals) for a in alts]
+            if all(alt_r):
+                reasons.append("none of: " + " | ".join("; ".join(r) for r in alt_r))
+        awaiting = pending and not reasons and bool(oc.get("require_outline"))
+        if awaiting:  # box rules passed, but this concept only counts objects whose outline passed the object check
+            reasons.append("awaiting SAM outline (box rules passed; counted only once the outline passes)")
         res = {"pass": not reasons, "reason": "; ".join(reasons) or "ok", "area_m2": round(area, 1),
-               "compactness": round(float(comp), 3), "colour_frac": None if colour_frac is None else round(colour_frac, 3),
+               "compactness": None if pending else round(float(comp), 3),
+               "colour_frac": None if colour_frac is None else round(colour_frac, 3),
                "colour_area_m2": None if colour_area is None else round(colour_area, 1),
+               "green_frac": None if green_frac is None else round(green_frac, 3),
                "height_m": None if height is None else round(height, 2),
                "building_overlap": None if bover is None else round(bover, 2), "refined": refined_geom is not None}
+        if rect is not None or host_cover is not None:
+            res.update(rectangularity=None if rect is None else round(rect, 3),
+                       host_cover=None if host_cover is None else round(host_cover, 3),
+                       host_contrast=None if host_contrast is None else round(host_contrast, 1))
+        if pending:
+            res["pending_box"] = True
+            if awaiting:
+                res["awaiting_outline"] = True
         if refined_geom is not None:
             res["geometry"] = refined_geom
         cache[key] = res
         return res
+
+    @staticmethod
+    def _check_rules(oc: dict[str, Any], v: dict[str, Any]) -> list[str]:
+        """Reasons an object fails one rule set (empty = pass). A measurement that is None (no lidar, no image, a
+        pending box's compactness) does not fail its rule: the rule is not applicable there."""
+        reasons = []
+        lo_a, hi_a = oc.get("area_m2", [0, 1e12])
+        if not (lo_a <= v["area"] <= hi_a):
+            reasons.append(f"area {v['area']:.0f} m² outside {lo_a}–{hi_a}")
+        if v["comp"] is not None and v["comp"] < oc.get("compactness_min", 0):
+            reasons.append(f"compactness {v['comp']:.2f} < {oc['compactness_min']}")
+        if v["colour_frac"] is not None and v["colour_frac"] < oc.get("colour_frac_min", 0):
+            reasons.append(f"colour {v['colour_frac']:.2f} < {oc['colour_frac_min']}")
+        if v["colour_area"] is not None and v["colour_area"] < oc.get("colour_area_min_m2", 0):
+            reasons.append(f"colour area {v['colour_area']:.0f} m² < {oc['colour_area_min_m2']}")
+        if v["green_frac"] is not None and oc.get("max_green_frac") is not None \
+                and v["green_frac"] > float(oc["max_green_frac"]):
+            reasons.append(f"{100 * v['green_frac']:.0f}% vegetation pixels > {100 * float(oc['max_green_frac']):.0f}%")
+        h = v["height"]
+        if h is not None and oc.get("max_height_m") is not None and h > float(oc["max_height_m"]):
+            reasons.append(f"height {h:.1f} m > {oc['max_height_m']} (lidar)")
+        if h is not None and oc.get("min_height_m") is not None and h < float(oc["min_height_m"]):
+            reasons.append(f"height {h:.1f} m < {oc['min_height_m']} (lidar)")
+        b = v["bover"]
+        if b is not None and oc.get("max_building_overlap") is not None and b > float(oc["max_building_overlap"]):
+            reasons.append(f"{100 * b:.0f}% on a building footprint (Overture)")
+        if b is not None and oc.get("min_building_overlap") is not None and b < float(oc["min_building_overlap"]):
+            reasons.append(f"only {100 * b:.0f}% on a building footprint (Overture) < {100 * float(oc['min_building_overlap']):.0f}%")
+        if v.get("rect") is not None and v["rect"] < oc.get("rectangularity_min", 0):
+            reasons.append(f"rectangularity {v['rect']:.2f} < {oc['rectangularity_min']}")
+        hc = v.get("host_cover")
+        if hc is not None and oc.get("max_host_cover") is not None and hc > float(oc["max_host_cover"]):
+            reasons.append(f"covers {100 * hc:.0f}% of its building footprint > {100 * float(oc['max_host_cover']):.0f}%")
+        hx = v.get("host_contrast")
+        if hx is not None and oc.get("min_host_contrast") is not None and hx < float(oc["min_host_contrast"]):
+            reasons.append(f"looks like the rest of its roof (contrast {hx:.0f} < {oc['min_host_contrast']})")
+        return reasons
 
     def place_bbox(self, place: str | None) -> list[float] | None:
         if not place:
@@ -786,6 +876,42 @@ class Engine:
         return float(sum(gm.intersection(bg[int(j)]).area for j in tree.query(gm, predicate="intersects"))
                      / max(gm.area, 1e-9))
 
+    def _host_geom(self, gm):
+        """The Overture footprint(s) a geometry (EPSG:32617) sits on, unioned: footprints whose overlap with it is
+        > 20% of the smaller of the two; None when it is on no footprint."""
+        from shapely.ops import unary_union
+
+        self._building_overlap(gm)  # fills the ~1 km tile cache for this location
+        c = gm.centroid
+        bg, tree = self.__dict__["_btiles"][(int(c.x // 1000), int(c.y // 1000))]
+        if tree is None:
+            return None
+        hosts = [bg[int(j)] for j in tree.query(gm, predicate="intersects")]
+        hosts = [h for h in hosts if gm.intersection(h).area > 0.2 * min(gm.area, h.area)]
+        return unary_union(hosts) if hosts else None
+
+    def _host_contrast(self, i: int, gm, host) -> float | None:
+        """Distance in (saturation, brightness) between the median pixel of a geometry and the median pixel of the rest
+        of its host footprint (1.2 m gap), on chip i's image. None when either side has too few pixels in the chip."""
+        from rasterio.features import rasterize
+        from rasterio.transform import from_origin
+
+        from groundtruth.rerank import _hsv
+
+        rest = host.difference(gm.buffer(1.2))
+        if rest.is_empty:
+            return None
+        img = np.asarray(Image.open(io.BytesIO(self.index.thumb_jpeg(i))).convert("RGB"))
+        x0, y0 = float(self.index.meta["x0_m"][i]), float(self.index.meta["y0_m"][i])
+        tr = from_origin(x0, y0 + config.CHIP_M, config.GSD_M, config.GSD_M)
+        mo = rasterize([gm], out_shape=img.shape[:2], transform=tr) > 0
+        mr = rasterize([rest], out_shape=img.shape[:2], transform=tr) > 0
+        if mo.sum() < 5 or mr.sum() < 20:
+            return None
+        hsv = _hsv(img)
+        so, sr = np.median(hsv[mo][:, 1:], 0), np.median(hsv[mr][:, 1:], 0)
+        return float(np.hypot(*(so - sr)))
+
     def _object_feature(self, i: int, cell: int, patch: int | None, score: float, rank: int, concept: str | None,
                         base_conf: float, extra: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any] | None]:
         """Feature for one detected object: outline + object check when cached, else its patch/cell box."""
@@ -808,8 +934,16 @@ class Engine:
         else:
             bb = self._patch_box_wgs84(i, patch) if patch is not None else p["cell_bbox"]
             f["geometry"] = mapping(sbox(*bb))
-            p.update(geometry_kind="box", area_m2=None, area_acres=None, object_check=None,
-                     confidence=round(base_conf * 0.85, 3))
+            # concepts with "verify_pending" check the box now (location/colour rules), before any SAM outline exists;
+            # area = the scan's connected patch group (n_patches × patch area), else the box
+            pa = (config.CHIP_M / 16) ** 2 if patch is not None else to_measure(sbox(*bb)).area
+            box_ol = {"id": ex_id, "geometry": f["geometry"],
+                      "properties": {"chip_id": self.index.ids[i], "patch": patch, "pending_box": True,
+                                     "area_m2": float(extra.get("n_patches") or 1) * pa}}
+            chk = self.object_check(box_ol, concept)
+            p.update(geometry_kind="box", area_m2=None, area_acres=None,
+                     object_check=None if chk is None else dict(chk),
+                     confidence=round(base_conf * 0.85 * (1.0 if chk is None or chk["pass"] else 0.0), 3))
         f["id"] = ex_id
         return f, chk
 
@@ -859,14 +993,18 @@ class Engine:
             q = self._outline_worker() if outline_top else None
             scores = [f["properties"]["score"] for f in feats] or [0]
             s_hi, s_lo = max(scores), min(scores)
-            out, polys, rejected, n_queued = [], [], 0, 0
+            out, polys, rejected, n_queued, awaiting = [], [], 0, 0, 0
             for r, f in enumerate(feats):
                 p = f["properties"]
                 i, c = self.index.pos[p["chip_id"]], p["cell"]
                 rel = float(np.clip((p["score"] - s_lo) / max(s_hi - s_lo, 1e-6), 0, 1))
                 feat, chk = self._object_feature(i, c, None, p["score"], r + 1, concept, rel, {})
-                if q is not None and chk is None and r < outline_top and (i, c, None) not in self._queued:
+                todo = chk is None or (chk.get("pending_box") and (chk["pass"] or chk.get("awaiting_outline")))
+                if q is not None and todo and r < outline_top and (i, c, None) not in self._queued:
                     self._queued.add((i, c, None)); q.put((i, c, None)); n_queued += 1
+                if chk is not None and chk.get("awaiting_outline"):  # box rules passed; counted once outlined
+                    awaiting += 1
+                    continue
                 if chk is not None and not chk["pass"]:
                     rejected += 1
                     continue
@@ -879,7 +1017,7 @@ class Engine:
                 out.append(feat)
         for r, f in enumerate(out):
             f["properties"]["rank"] = r + 1
-        metrics = self._object_metrics(out, rejected, n_queued, bbox, place, concept)
+        metrics = self._object_metrics(out, rejected, n_queued, bbox, place, concept, awaiting)
         metrics.update(mode="ranked_top_k", confidence_cut=conf_cut)
         limits = self._limits() + [
             f"County-wide mode: only the top {k} ranked matches are examined, so this is NOT an exhaustive count; "
@@ -897,11 +1035,15 @@ class Engine:
         return round(float(np.mean(cs)), 3) if cs else None
 
     @staticmethod
-    def _object_metrics(out: Sequence[dict[str, Any]], rejected: int, queued: int, bbox, place, concept) -> dict[str, Any]:
+    def _object_metrics(out: Sequence[dict[str, Any]], rejected: int, queued: int, bbox, place, concept,
+                        awaiting: int = 0) -> dict[str, Any]:
+        """awaiting = boxes that passed a require_outline concept's box rules but are not counted until outlined
+        (included in pending_outline so a partial result is never memoised as final)."""
         areas = [f["properties"]["area_m2"] for f in out if f["properties"].get("area_m2")]
         tot = float(sum(areas))
         return {"count_detected": len(out), "outlined": sum(1 for f in out if f["properties"]["geometry_kind"] == "outline"),
-                "pending_outline": sum(1 for f in out if f["properties"]["geometry_kind"] != "outline"),
+                "pending_outline": sum(1 for f in out if f["properties"]["geometry_kind"] != "outline") + awaiting,
+                "awaiting_outline_not_counted": awaiting,
                 "rejected_by_object_check": rejected, "outlines_queued": queued,
                 "area_m2_total": round(tot, 1), "area_acres_total": round(tot / SQM_PER_ACRE, 3),
                 "median_area_m2": round(float(np.median(areas)), 1) if areas else None,
@@ -970,14 +1112,18 @@ class Engine:
         smin = float(dconf["score_min"]) if "sim_min" not in dconf else 0.6 * float(dconf["sim_min"]) + 0.4 * float(dconf["colour_min"])
         with t.step("objects", f"outline/object check; queue top {min(outline_top, len(dets))} for SAM 2"):
             q = self._outline_worker() if outline_top else None
-            out, rejected, n_queued = [], 0, 0
+            out, rejected, n_queued, awaiting = [], 0, 0, 0
             for r, d in enumerate(dets):
                 base = float(np.clip(0.5 + (d.score - smin) / 0.3, 0, 1))
                 feat, chk = self._object_feature(d.row, d.cell, d.patch, d.score, r + 1, concept, base,
                                                  {"patch_sim": round(d.patch_sim, 4), "colour": round(d.colour, 3),
                                                   "n_patches": d.n_patches, "x_m": round(d.x_m, 2), "y_m": round(d.y_m, 2)})
-                if q is not None and chk is None and r < outline_top and (d.row, d.cell, d.patch) not in self._queued:
+                todo = chk is None or (chk.get("pending_box") and (chk["pass"] or chk.get("awaiting_outline")))
+                if q is not None and todo and r < outline_top and (d.row, d.cell, d.patch) not in self._queued:
                     self._queued.add((d.row, d.cell, d.patch)); q.put((d.row, d.cell, d.patch)); n_queued += 1
+                if chk is not None and chk.get("awaiting_outline"):  # box rules passed; counted once outlined
+                    awaiting += 1
+                    continue
                 if chk is not None and not chk["pass"]:
                     rejected += 1
                     continue
@@ -991,7 +1137,7 @@ class Engine:
                               f"the standard scan → {len(out)} objects")
         for r, f in enumerate(out):
             f["properties"]["rank"] = r + 1
-        metrics = self._object_metrics(out, rejected, n_queued, bbox, place, concept)
+        metrics = self._object_metrics(out, rejected, n_queued, bbox, place, concept, awaiting)
         metrics.update(mode="exhaustive_scan", **{k: v for k, v in info.items() if k != "device"}, device=info.get("device"))
         metrics["dense"] = dense_info is not None
         if dense_info:
@@ -1274,7 +1420,7 @@ class Engine:
                 else:
                     feat, chk = self._object_feature(i, c, p, prob, 0, concept, prob, extra)
                 if chk is not None and not chk["pass"]:
-                    rejected_check += 1
+                    rejected_check += 0 if chk.get("awaiting_outline") else 1  # awaiting: not counted, not rejected
                     continue
                 if prob < 0.5:
                     below += 1
@@ -1502,20 +1648,47 @@ class Engine:
                 if bb is None:
                     return declined(tool, VERSION, f"unknown place {where['inside_place']!r}")
                 place_g = to_measure(box(*bb))
-            iso_g, iso_info = None, None
-            if where.get("within_minutes_of") and feats:
+            iso_g, iso_info, travel_key = None, None, None
+            wm = where.get("within_minutes_of")
+            outside = bool(wm.get("outside")) if isinstance(wm, dict) else False
+            if wm and feats:
+                origin = wm.get("origin", wm) if isinstance(wm, dict) else wm
+                o_s = origin.get("category") if isinstance(origin, dict) else origin
+                cat = (self.resolve_category(o_s) if isinstance(o_s, str)
+                       and str(o_s).lower().strip() not in self._pc()["landmarks"] else None)
                 try:
-                    iso_g, iso_info = self._travel_area(where["within_minutes_of"], feats)
-                    from shapely.prepared import prep
+                    if cat:  # a category: per-object drive-time band to the nearest one (minutes_to_<category>)
+                        from groundtruth import risk as R
 
-                    iso_p = prep(iso_g)
+                        mins = float(wm.get("minutes", 10))
+                        facts, minfo = R.minutes_facts(self, feats, cat[0], mins, wm.get("mode", "drive"))
+                        feats = [{"type": "Feature", "id": f.get("id"), "geometry": f["geometry"],
+                                  "properties": {**(f.get("properties") or {}), **d}} for f, d in zip(feats, facts)]
+                        travel_key = f"minutes_to_{cat[0]}"
+                        iso_info = {**minfo, "minutes": mins, "outside": outside,
+                                    "origins": minfo["origins"][:30], "property": travel_key}
+                    else:
+                        iso_g, iso_info = self._travel_area(wm, feats)
+                        from shapely.prepared import prep
+
+                        iso_p = prep(iso_g)
+                        iso_info["outside"] = outside
                 except (KeyError, ValueError, FileNotFoundError) as e:
                     return declined(tool, VERSION, str(e))
+        risk_keys = [k for k in RISK_PREDICATES if where.get(k) is not None]
+        rinfo: dict[str, Any] = {}
+        if risk_keys and feats:
+            try:
+                feats, rinfo = self._risk_annotate(feats, where, t)
+            except (FileNotFoundError, KeyError, ValueError) as e:
+                return declined(tool, VERSION, f"risk data unavailable: {e}")
         keep = []
         with t.step("filter", f"{len(feats)} features"):
             for f in feats:
                 gm = to_measure(shape(f["geometry"]))
                 p = f.get("properties") or {}
+                if risk_keys and not self._risk_pass(p, where, rinfo):
+                    continue
                 a = p.get("area_acres") if p.get("area_acres") is not None else gm.area / SQM_PER_ACRE
                 if inter is not None and not gm.intersects(inter):
                     continue
@@ -1525,8 +1698,12 @@ class Engine:
                     continue
                 if place_g is not None and not gm.intersects(place_g):
                     continue
-                if iso_g is not None and not iso_p.intersects(gm):
+                if iso_g is not None and iso_p.intersects(gm) == outside:
                     continue
+                if travel_key is not None:
+                    v = p.get(travel_key)
+                    if (v is not None and v <= iso_info["minutes"]) == outside:
+                        continue
                 if "min_area_acres" in where and a < where["min_area_acres"]:
                     continue
                 if "max_area_acres" in where and a > where["max_area_acres"]:
@@ -1544,17 +1721,262 @@ class Engine:
             limits.append("Travel times: Valhalla on OpenStreetMap roads at free-flow speeds (no live traffic); "
                           "an object counts when its outline touches the travel-time area")
             sources.append(self.provider.routing_source())
+        method = ("Spatial/attribute predicates evaluated in EPSG:32617 (distances to layer unions"
+                  + ("; travel-time areas = union of Valhalla isochrones from the origins" if iso_info else "") + ")")
+        if risk_keys:
+            metrics["risk"] = {k: v for k, v in rinfo.items() if not k.startswith("_")}
+            limits += rinfo.get("_limits", [])
+            sources += rinfo.get("_sources", [])
+            method += "; risk predicates " + ", ".join(risk_keys) + " (per-feature facts kept as properties: " \
+                + ", ".join(rinfo.get("_props", [])) + ")"
         return self._env(tool, status="ok", result=Result(geojson=feature_collection(keep), metrics=metrics),
+                         confidence=1.0, method=method, limits=limits, sources=sources, steps=t.steps)
+
+    # ------------------------------------------------------------------ risk facts + predicates (T4)
+    def risk_sources(self, kinds: Sequence[str]) -> list[Source]:
+        from groundtruth import risk as R
+
+        out = []
+        if "flood" in kinds:
+            m = R.flood_meta()
+            out.append(Source(name="FEMA NFHL flood hazard zones (layer 28, DFIRM 37119C)", url=R.conf()["flood"]["nfhl_url"],
+                              date=(m.get("built") or "")[:10], licence="Public domain (US Government work, FEMA)"))
+        if "shore" in kinds:
+            out += self.provider.source_for("openstreetmap water")
+        if "lidar" in kinds:
+            out.append(Source(name="USGS 3DEP lidar USGS_LPC_NC_Phase4_Mecklenburg_2016_LAS_2019",
+                              url="https://s3-us-west-2.amazonaws.com/usgs-lidar-public/USGS_LPC_NC_Phase4_Mecklenburg_2016_LAS_2019/ept.json",
+                              date="2016 (published 2019)", licence="Public domain (USGS 3DEP)"))
+        if "canopy" in kinds:
+            out += [s for s in self.provider.sources() if "2022" in s.name and "NAIP" in s.name]
+        if "travel" in kinds:
+            out += [self.provider.routing_source(), self.provider.overture_source("places")]
+        return out
+
+    def _risk_annotate(self, feats: Sequence[dict[str, Any]], where: dict[str, Any], t: StepTimer | None = None,
+                       facts: Sequence[str] = (), concept: str | None = None):
+        """Copies of the features with the risk facts the predicates (or ``facts``) need → (features, info)."""
+        from groundtruth import risk as R
+
+        t = t or StepTimer()
+        need = set(facts)
+        if where.get("in_flood_zone") is not None:
+            need.add("flood")
+        if where.get("elevation_above_flood_m") is not None:
+            need |= {"flood", "elevation"}
+        if where.get("within_m_of_shore") is not None:
+            need.add("shore")
+        if where.get("canopy_over_pct") is not None:
+            need.add("canopy")
+        if where.get("slope_deg") is not None:
+            need.add("slope")
+        if where.get("height_m") is not None:
+            need.add("height")
+        out = [{"type": "Feature", "id": f.get("id"), "geometry": f["geometry"], "properties": dict(f.get("properties") or {})}
+               for f in feats]
+        prim = [f for f in out if f["properties"].get("kind") not in ("dock", "dock_link")]
+        info: dict[str, Any] = {"_limits": [], "_sources": [], "_props": []}
+        concept = concept or where.get("concept")
+
+        def put(facts_l):
+            for f, d in zip(prim, facts_l):
+                f["properties"].update(d)
+            for d in facts_l[:1]:
+                info["_props"] += [k for k in d if k not in info["_props"]]
+
+        if "flood" in need and not all("flood_kind" in f["properties"] for f in prim):
+            with t.step("flood", f"{len(prim)} objects vs FEMA NFHL zones (accurate, unsimplified)"):
+                put(R.flood_facts(prim, self.provider.get_boundary()))
+        if "flood" in need:
+            unc = sum(1 for f in prim if not f["properties"].get("flood_covered", True))
+            info["flood_not_covered"] = unc
+            info["_limits"].append("Flood zones: FEMA NFHL effective zones for Mecklenburg (DFIRM 37119C); an object is "
+                                   "'in' a zone when its outline touches it (the most severe zone wins); FEMA zones are "
+                                   "regulatory maps, not a flood forecast")
+            if unc:
+                info["_limits"].append(f"{unc} objects lie outside the mapped area (FEMA data for Mecklenburg only): "
+                                       "their zone is unknown, not 'outside a zone'")
+            info["_sources"] += self.risk_sources(["flood"])
+        if "elevation" in need and not all("elev_bfe_status" in f["properties"] for f in prim):
+            with t.step("elevation", "lidar DTM (lowest adjacent grade proxy) − FEMA static BFE"):
+                put(R.elevation_facts(prim, [f["properties"] for f in prim]))
+        if "elevation" in need:
+            st: dict[str, int] = {}
+            for f in prim:
+                s_ = f["properties"].get("elev_bfe_status")
+                st[s_] = st.get(s_, 0) + 1
+            info["elev_bfe_status"] = st
+            nb = st.get("no_bfe", 0) + st.get("no_lidar", 0)
+            info["_limits"].append("Height above the base flood elevation (BFE) = lidar bare-earth ground (10th percentile "
+                                   "within 2 m of the outline, a proxy for the lowest adjacent grade; 3DEP 2016, metres "
+                                   "NAVD88) − FEMA STATIC_BFE (feet → metres). Not a surveyed elevation certificate")
+            if nb:
+                info["_limits"].append(f"Height above the flood elevation unavailable for {nb} objects in the 100-year zone "
+                                       f"({st.get('no_bfe', 0)}: FEMA publishes no static BFE for their zone; "
+                                       f"{st.get('no_lidar', 0)}: no lidar built there). They are marked, never estimated")
+            info["_sources"] += self.risk_sources(["lidar"])
+        if "shore" in need and not all("shore_dist_m" in f["properties"] for f in prim):
+            with t.step("shore", "distance to the shoreline of Lake Norman, Mountain Island Lake, Lake Wylie, Catawba River"):
+                put(R.shore_facts(prim))
+        if "shore" in need:
+            info["_limits"].append("Shore = OSM water outline of the main lakes/river (county-line edges removed); "
+                                   "shore_dist_m is from the object's outline")
+            info["_sources"] += self.risk_sources(["shore"])
+        if "canopy" in need:
+            with t.step("canopy", "lidar nDSM ≥ 3 m AND green NAIP 2022 pixel, per object footprint (+ buffer)"):
+                put(R.canopy_facts(prim, concept))
+            n_none = sum(1 for f in prim if f["properties"].get("canopy_over_pct") is None)
+            info["canopy_unmeasured"] = n_none
+            cb = R.conf()["canopy"]
+            info["_limits"].append(f"Canopy = lidar height ≥ {cb['min_height_m']} m (3DEP 2016) AND NAIP "
+                                   f"{cb['naip_year']} NDVI ≥ {cb['ndvi']['min']}, outside building footprints; trees grown since 2016 are missed, most cut since are dropped by NDVI. "
+                                   + cb["buffer_note"])
+            if n_none:
+                info["_limits"].append(f"canopy_over_pct unmeasured for {n_none} objects (no lidar/canopy raster there)")
+            info["_sources"] += self.risk_sources(["lidar", "canopy"])
+        if "slope" in need:
+            with t.step("slope", "median DTM slope in each footprint"):
+                put(R.slope_facts(prim))
+            info["slope_unmeasured"] = sum(1 for f in prim if f["properties"].get("slope_deg") is None)
+            info["_limits"].append("Slope from the 1 m lidar bare-earth DTM (2016): ground under buildings is interpolated")
+            info["_sources"] += self.risk_sources(["lidar"])
+        if "height" in need:
+            with t.step("height", "feature height_m, else lidar nDSM 90th percentile"):
+                put(R.height_facts(prim))
+            info["height_unmeasured"] = sum(1 for f in prim if f["properties"].get("height_m") is None)
+            info["_sources"] += self.risk_sources(["lidar"])
+        info["_limits"] = list(dict.fromkeys(info["_limits"]))
+        seen, srcs = set(), []
+        for s in info["_sources"]:
+            if s.name not in seen:
+                seen.add(s.name)
+                srcs.append(s)
+        info["_sources"] = srcs
+        return out, info
+
+    def explain(self, geojson: dict[str, Any], facts: Sequence[str] = (), label: str | None = None,
+                unit: str = "results", base_count: int | None = None, concept: str | None = None,
+                filter_kind: str | None = None) -> Envelope:
+        """The answer layer (T4): every feature gets ``properties.why`` (plain words: its basic fact + every risk fact
+        it carries) and the envelope gets summary numbers + ``metrics.insights`` (1–3 strings built ONLY from those
+        numbers). ``facts`` ⊆ {flood, elevation, shore, canopy, slope, height, travel, lakefront, distance}: facts to
+        measure when missing and to mention. Supplementary features (derived docks / links) are kept, not counted."""
+        tool = "explain"
+        from groundtruth import risk as R
+
+        t = StepTimer()
+        feats = geojson.get("features", [])
+        measurable = [f for f in facts if f in ("flood", "elevation", "shore", "canopy", "slope", "height")]
+        info: dict[str, Any] = {"_limits": [], "_sources": []}
+        if feats and measurable:
+            try:
+                feats, info = self._risk_annotate(feats, {}, t, facts=measurable, concept=concept)
+            except (FileNotFoundError, KeyError, ValueError) as e:
+                return declined(tool, VERSION, f"risk data unavailable: {e}")
+        else:
+            feats = [{"type": "Feature", "id": f.get("id"), "geometry": f["geometry"],
+                      "properties": dict(f.get("properties") or {})} for f in feats]
+        prim = [f for f in feats if f["properties"].get("kind") not in ("dock", "dock_link")]
+        with t.step("why", f"WHY line for {len(feats)} features (conf/risk.json why)"):
+            for f in feats:
+                p = f["properties"]
+                if isinstance(p.get("why"), dict):  # refine's similarity explanation keeps its own key
+                    p["why_detail"] = p.pop("why")
+                if p.get("kind") == "dock":
+                    p["why"] = "Dock" + (" · new since 2020" if p.get("new_since_2020") else "")
+                elif p.get("kind") == "dock_link":
+                    p["why"] = f"house → its dock, {float(p.get('dist_m') or 0):.0f} m"
+                else:
+                    p["why"] = R.why_line(p, label, facts)
+        P = [f["properties"] for f in prim]
+        n = len(P)
+        s: dict[str, Any] = {"count": n, "of_count": base_count, "unit": unit, "filter_kind": filter_kind}
+        if "flood" in facts:
+            s.update(in_100yr=sum(1 for p in P if p.get("flood_kind") == "100yr"),
+                     in_500yr_only=sum(1 for p in P if p.get("flood_kind") == "500yr"),
+                     flood_unknown=sum(1 for p in P if not p.get("flood_covered", True)))
+            zones: dict[str, int] = {}
+            for p in P:
+                if p.get("flood_zone"):
+                    zones[p["flood_zone"]] = zones.get(p["flood_zone"], 0) + 1
+            s["zones"] = dict(sorted(zones.items()))
+        if "elevation" in facts:
+            ok = [p["elev_above_bfe_m"] for p in P if p.get("elev_above_bfe_m") is not None]
+            s.update(bfe_known=len(ok), median_elev_above_bfe_m=R.median(ok),
+                     min_elev_above_bfe_m=min(ok) if ok else None)
+            s.setdefault("in_100yr", sum(1 for p in P if p.get("flood_kind") == "100yr"))
+        if "shore" in facts or "lakefront" in facts:
+            s["median_shore_dist_m"] = R.median([p.get("shore_dist_m", p.get("dist_shore_m")) for p in P])
+        if "canopy" in facts:
+            s["median_canopy_over_pct"] = R.median([p.get("canopy_over_pct") for p in P])
+        if "height" in facts:
+            s["median_height_m"] = R.median([p.get("height_m") for p in P])
+        if "travel" in facts:
+            keys = sorted({k for p in P for k in p if k.startswith("minutes_to_") and not k.endswith(("_over", "_from"))})
+            if keys:
+                k = keys[0]
+                s.update(travel_label=k[len("minutes_to_"):].replace("_", " "),
+                         median_minutes=R.median([p.get(k) for p in P]),
+                         beyond_bands=sum(1 for p in P if p.get(k) is None))
+        topics = [f for f in facts if f in ("flood", "elevation", "shore", "canopy", "travel", "height")]
+        s["insights"] = (R.insights(s, topics, unit) if topics
+                         else [R._fmt(R.conf()["insights"]["count"], n=f"{n:,}", unit=unit)])
+        return self._env(tool, status="ok", result=Result(geojson=feature_collection(feats), metrics=s),
                          confidence=1.0,
-                         method="Spatial/attribute predicates evaluated in EPSG:32617 (distances to layer unions"
-                                + ("; travel-time areas = union of Valhalla isochrones from the origins" if iso_info else "")
-                                + ")",
-                         limits=limits, sources=sources, steps=t.steps)
+                         method="WHY line per feature from its own properties (conf/risk.json why); insights are built "
+                                "only from the numbers in these metrics"
+                                + ("; facts measured: " + ", ".join(measurable) if measurable else ""),
+                         limits=info.get("_limits", []), sources=info.get("_sources", []), steps=t.steps)
+
+    @staticmethod
+    def _risk_pass(p: dict[str, Any], where: dict[str, Any], info: dict[str, Any]) -> bool:
+        if p.get("kind") in ("dock", "dock_link"):
+            return True  # supplementary geometry of a derived house; follows its house (planner drops orphans)
+
+        def rng(val, spec) -> bool:
+            if val is None:
+                return False  # unmeasured never passes (counted in metrics.risk)
+            spec = spec if isinstance(spec, dict) else {"min": spec}
+            if spec.get("min") is not None and float(val) < float(spec["min"]):
+                return False
+            if spec.get("max") is not None and float(val) > float(spec["max"]):
+                return False
+            if spec.get("lt") is not None and float(val) >= float(spec["lt"]):
+                return False
+            if spec.get("gt") is not None and float(val) <= float(spec["gt"]):
+                return False
+            return True
+
+        fz = where.get("in_flood_zone")
+        if fz is not None:
+            kind = fz.get("kind", "any") if isinstance(fz, dict) else (fz if isinstance(fz, str) else "any")
+            k = p.get("flood_kind")
+            ok = {"100yr": k == "100yr", "500yr": k in ("100yr", "500yr"), "500yr_only": k == "500yr",
+                  "any": k in ("100yr", "500yr"), "none": k is None and p.get("flood_covered", True),
+                  "floodway": bool(p.get("flood_floodway"))}.get(kind, False)
+            if not ok:
+                return False
+        if where.get("within_m_of_shore") is not None:
+            m = where["within_m_of_shore"]
+            m = m.get("m") if isinstance(m, dict) else m
+            if p.get("shore_dist_m") is None or float(p["shore_dist_m"]) > float(m):
+                return False
+        for key, prop in (("canopy_over_pct", "canopy_over_pct"), ("elevation_above_flood_m", "elev_above_bfe_m"),
+                          ("slope_deg", "slope_deg"), ("height_m", "height_m")):
+            if where.get(key) is not None and not rng(p.get(prop), where[key]):
+                return False
+        return True
 
     # ------------------------------------------------------------------ places + travel time (Phase 5)
     @staticmethod
     def _pc() -> dict[str, Any]:
-        return json.loads((config.SENSES_PATH.parent / "places_categories.json").read_text())
+        """conf/places_categories.json + the risk categories of conf/risk.json (fire stations, marinas, ...)."""
+        pc = json.loads((config.SENSES_PATH.parent / "places_categories.json").read_text())
+        rp = config.SENSES_PATH.parent / "risk.json"
+        if rp.exists():
+            extra = {k: v for k, v in json.loads(rp.read_text()).get("categories", {}).items() if not k.startswith("_")}
+            pc["categories"] = {**pc["categories"], **extra}
+        return pc
 
     def resolve_category(self, text: str) -> tuple[str, dict[str, Any]] | None:
         t = text.lower().strip()
@@ -1928,6 +2350,8 @@ class Engine:
                summary: dict[str, Any] | None = None) -> Envelope:
         tool = "export"
         feats = geojson.get("features", [])
+        if len(feats) > 50_000:  # body cap: exports are of result sets, not bulk copies of a layer
+            return declined(tool, VERSION, f"too many features to export ({len(feats)} > 50,000)")
         t = StepTimer()
         with t.step("serialise", fmt):
             if fmt == "geojson":
@@ -1947,7 +2371,8 @@ class Engine:
                 return declined(tool, VERSION, f"unsupported format {fmt!r} (geojson, csv, pdf)")
             out = config.DATA / "out" / "exports"
             out.mkdir(parents=True, exist_ok=True)
-            name = f"export_{time.strftime('%Y%m%dT%H%M%S')}_{len(feats)}.{fmt}"
+            # unique per call (two exports in the same second no longer overwrite each other)
+            name = f"export_{time.strftime('%Y%m%dT%H%M%S')}_{len(feats)}_{uuid.uuid4().hex[:6]}.{fmt}"
             if fmt == "pdf":
                 nbytes = self._pdf(out / name, feats, title or "Groundtruth results", summary or {})
             else:

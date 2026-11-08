@@ -1,0 +1,462 @@
+{
+ "created": "2026-11-08T09:09:10-0500",
+ "mosaic_version": "v1",
+ "shots": [
+  {
+   "area": "Lake Norman",
+   "year": 2022,
+   "z": 12,
+   "centre_tile": [
+    1127,
+    1615
+   ],
+   "seam_lonlat": [
+    -80.87484,
+    35.50169
+   ],
+   "seam": "orthomosaic seamline on water (detected)",
+   "detected_step_dn": 14.72,
+   "seam_length_m": 465.3,
+   "mosaic_covers_centre": false,
+   "before": {
+    "step": 15.0,
+    "control": 24.67,
+    "ratio": 0.61,
+    "n": 233,
+    "band_max_step": 36.33,
+    "band_ratio": 1.47
+   },
+   "after": {
+    "step": 15.0,
+    "control": 24.67,
+    "ratio": 0.61,
+    "n": 233,
+    "band_max_step": 36.33,
+    "band_ratio": 1.47
+   },
+   "files": [
+    "docs/media/v3/f0/seam_lake_norman_z12_before.png",
+    "docs/media/v3/f0/seam_lake_norman_z12_after.png"
+   ]
+  },
+  {
+   "area": "Lake Norman",
+   "year": 2022,
+   "z": 14,
+   "centre_tile": [
+    4511,
+    6461
+   ],
+   "seam_lonlat": [
+    -80.87484,
+    35.50169
+   ],
+   "seam": "orthomosaic seamline on water (detected)",
+   "detected_step_dn": 14.72,
+   "seam_length_m": 465.3,
+   "mosaic_covers_centre": true,
+   "before": {
+    "step": 13.67,
+    "control": 18.0,
+    "ratio": 0.76,
+    "n": 233,
+    "band_max_step": 30.0,
+    "band_ratio": 1.67
+   },
+   "after": {
+    "step": 6.0,
+    "control": 21.17,
+    "ratio": 0.28,
+    "n": 233,
+    "band_max_step": 36.33,
+    "band_ratio": 1.72
+   },
+   "files": [
+    "docs/media/v3/f0/seam_lake_norman_z14_before.png",
+    "docs/media/v3/f0/seam_lake_norman_z14_after.png"
+   ]
+  },
+  {
+   "area": "Lake Norman",
+   "year": 2022,
+   "z": 16,
+   "centre_tile": [
+    18045,
+    25846
+   ],
+   "seam_lonlat": [
+    -80.87484,
+    35.50169
+   ],
+   "seam": "orthomosaic seamline on water (detected)",
+   "detected_step_dn": 14.72,
+   "seam_length_m": 465.3,
+   "mosaic_covers_centre": true,
+   "before": {
+    "step": 8.0,
+    "control": 0.83,
+    "ratio": 9.6,
+    "n": 233,
+    "band_max_step": 21.67,
+    "band_ratio": 26.0
+   },
+   "after": {
+    "step": 4.67,
+    "control": 1.0,
+    "ratio": 4.67,
+    "n": 233,
+    "band_max_step": 25.33,
+    "band_ratio": 25.33
+   },
+   "files": [
+    "docs/media/v3/f0/seam_lake_norman_z16_before.png",
+    "docs/media/v3/f0/seam_lake_norman_z16_after.png"
+   ]
+  },
+  {
+   "area": "Lake Norman",
+   "year": 2022,
+   "z": 12,
+   "centre_tile": [
+    1127,
+    1616
+   ],
+   "seam_lonlat": [
+    -80.92797,
+    35.44689
+   ],
+   "seam": "orthomosaic seamline on water (detected)",
+   "detected_step_dn": 7.38,
+   "seam_length_m": 3648.0,
+   "mosaic_covers_centre": false,
+   "before": {
+    "step": 11.0,
+    "control": 3.58,
+    "ratio": 3.07,
+    "n": 1824,
+    "band_max_step": 13.67,
+    "band_ratio": 3.81
+   },
+   "after": {
+    "step": 11.0,
+    "control": 3.58,
+    "ratio": 3.07,
+    "n": 1824,
+    "band_max_step": 13.67,
+    "band_ratio": 3.81
+   },
+   "files": [
+    "docs/media/v3/f0/seam_lake_norman_main_z12_before.png",
+    "docs/media/v3/f0/seam_lake_norman_main_z12_after.png"
+   ]
+  },
+  {
+   "area": "Lake Norman",
+   "year": 2022,
+   "z": 14,
+   "centre_tile": [
+    4508,
+    6464
+   ],
+   "seam_lonlat": [
+    -80.92797,
+    35.44689
+   ],
+   "seam": "orthomosaic seamline on water (detected)",
+   "detected_step_dn": 7.38,
+   "seam_length_m": 3648.0,
+   "mosaic_covers_centre": true,
+   "before": {
+    "step": 6.0,
+    "control": 1.83,
+    "ratio": 3.27,
+    "n": 1824,
+    "band_max_step": 6.33,
+    "band_ratio": 3.45
+   },
+   "after": {
+    "step": 4.67,
+    "control": 2.5,
+    "ratio": 1.87,
+    "n": 1824,
+    "band_max_step": 5.0,
+    "band_ratio": 2.0
+   },
+   "files": [
+    "docs/media/v3/f0/seam_lake_norman_main_z14_before.png",
+    "docs/media/v3/f0/seam_lake_norman_main_z14_after.png"
+   ]
+  },
+  {
+   "area": "Lake Norman",
+   "year": 2022,
+   "z": 16,
+   "centre_tile": [
+    18035,
+    25859
+   ],
+   "seam_lonlat": [
+    -80.92797,
+    35.44689
+   ],
+   "seam": "orthomosaic seamline on water (detected)",
+   "detected_step_dn": 7.38,
+   "seam_length_m": 3648.0,
+   "mosaic_covers_centre": true,
+   "before": {
+    "step": 2.33,
+    "control": 1.33,
+    "ratio": 1.75,
+    "n": 744,
+    "band_max_step": 3.0,
+    "band_ratio": 2.25
+   },
+   "after": {
+    "step": 2.0,
+    "control": 1.33,
+    "ratio": 1.5,
+    "n": 744,
+    "band_max_step": 4.0,
+    "band_ratio": 3.0
+   },
+   "files": [
+    "docs/media/v3/f0/seam_lake_norman_main_z16_before.png",
+    "docs/media/v3/f0/seam_lake_norman_main_z16_after.png"
+   ]
+  },
+  {
+   "area": "Myers Park",
+   "year": 2022,
+   "z": 12,
+   "centre_tile": [
+    1128,
+    1619
+   ],
+   "seam_lonlat": [
+    -80.81483,
+    35.19167
+   ],
+   "seam": "scene footprint edge",
+   "upper": "nc_m_3508050_ne_17_060_20220927",
+   "lower": "nc_m_3508050_nw_17_060_20220602",
+   "upper_date": "2022-09-27",
+   "lower_date": "2022-06-02",
+   "mosaic_covers_centre": false,
+   "before": {
+    "step": 22.33,
+    "control": 27.67,
+    "ratio": 0.81,
+    "n": 1448,
+    "band_max_step": 40.33,
+    "band_ratio": 1.46
+   },
+   "after": {
+    "step": 22.33,
+    "control": 27.67,
+    "ratio": 0.81,
+    "n": 1448,
+    "band_max_step": 40.33,
+    "band_ratio": 1.46
+   },
+   "files": [
+    "docs/media/v3/f0/seam_myers_park_z12_before.png",
+    "docs/media/v3/f0/seam_myers_park_z12_after.png"
+   ]
+  },
+  {
+   "area": "Myers Park",
+   "year": 2022,
+   "z": 14,
+   "centre_tile": [
+    4514,
+    6479
+   ],
+   "seam_lonlat": [
+    -80.81483,
+    35.19167
+   ],
+   "seam": "scene footprint edge",
+   "upper": "nc_m_3508050_ne_17_060_20220927",
+   "lower": "nc_m_3508050_nw_17_060_20220602",
+   "upper_date": "2022-09-27",
+   "lower_date": "2022-06-02",
+   "mosaic_covers_centre": true,
+   "before": {
+    "step": 31.0,
+    "control": 33.33,
+    "ratio": 0.93,
+    "n": 1338,
+    "band_max_step": 42.83,
+    "band_ratio": 1.29
+   },
+   "after": {
+    "step": 32.0,
+    "control": 38.92,
+    "ratio": 0.82,
+    "n": 1338,
+    "band_max_step": 44.0,
+    "band_ratio": 1.13
+   },
+   "files": [
+    "docs/media/v3/f0/seam_myers_park_z14_before.png",
+    "docs/media/v3/f0/seam_myers_park_z14_after.png"
+   ]
+  },
+  {
+   "area": "Myers Park",
+   "year": 2022,
+   "z": 16,
+   "centre_tile": [
+    18056,
+    25916
+   ],
+   "seam_lonlat": [
+    -80.81483,
+    35.19167
+   ],
+   "seam": "scene footprint edge",
+   "upper": "nc_m_3508050_ne_17_060_20220927",
+   "lower": "nc_m_3508050_nw_17_060_20220602",
+   "upper_date": "2022-09-27",
+   "lower_date": "2022-06-02",
+   "mosaic_covers_centre": true,
+   "before": {
+    "step": 31.33,
+    "control": 27.0,
+    "ratio": 1.16,
+    "n": 591,
+    "band_max_step": 41.67,
+    "band_ratio": 1.54
+   },
+   "after": {
+    "step": 33.33,
+    "control": 29.17,
+    "ratio": 1.14,
+    "n": 591,
+    "band_max_step": 43.67,
+    "band_ratio": 1.5
+   },
+   "files": [
+    "docs/media/v3/f0/seam_myers_park_z16_before.png",
+    "docs/media/v3/f0/seam_myers_park_z16_after.png"
+   ]
+  },
+  {
+   "area": "Matthews",
+   "year": 2022,
+   "z": 12,
+   "centre_tile": [
+    1129,
+    1620
+   ],
+   "seam_lonlat": [
+    -80.68991,
+    35.12679
+   ],
+   "seam": "scene footprint edge",
+   "upper": "nc_m_3508059_nw_17_060_20220927",
+   "lower": "nc_m_3508051_se_17_060_20220622",
+   "upper_date": "2022-09-27",
+   "lower_date": "2022-06-22",
+   "mosaic_covers_centre": true,
+   "before": {
+    "step": 29.17,
+    "control": 15.83,
+    "ratio": 1.84,
+    "n": 422,
+    "band_max_step": 31.67,
+    "band_ratio": 2.0
+   },
+   "after": {
+    "step": 40.67,
+    "control": 18.5,
+    "ratio": 2.2,
+    "n": 422,
+    "band_max_step": 40.67,
+    "band_ratio": 2.2
+   },
+   "files": [
+    "docs/media/v3/f0/seam_matthews_z12_before.png",
+    "docs/media/v3/f0/seam_matthews_z12_after.png"
+   ]
+  },
+  {
+   "area": "Matthews",
+   "year": 2022,
+   "z": 14,
+   "centre_tile": [
+    4519,
+    6482
+   ],
+   "seam_lonlat": [
+    -80.68991,
+    35.12679
+   ],
+   "seam": "scene footprint edge",
+   "upper": "nc_m_3508059_nw_17_060_20220927",
+   "lower": "nc_m_3508051_se_17_060_20220622",
+   "upper_date": "2022-09-27",
+   "lower_date": "2022-06-22",
+   "mosaic_covers_centre": true,
+   "before": {
+    "step": 32.67,
+    "control": 24.83,
+    "ratio": 1.32,
+    "n": 422,
+    "band_max_step": 34.33,
+    "band_ratio": 1.38
+   },
+   "after": {
+    "step": 31.67,
+    "control": 27.67,
+    "ratio": 1.14,
+    "n": 422,
+    "band_max_step": 32.67,
+    "band_ratio": 1.18
+   },
+   "files": [
+    "docs/media/v3/f0/seam_matthews_z14_before.png",
+    "docs/media/v3/f0/seam_matthews_z14_after.png"
+   ]
+  },
+  {
+   "area": "Matthews",
+   "year": 2022,
+   "z": 16,
+   "centre_tile": [
+    18078,
+    25930
+   ],
+   "seam_lonlat": [
+    -80.68991,
+    35.12679
+   ],
+   "seam": "scene footprint edge",
+   "upper": "nc_m_3508059_nw_17_060_20220927",
+   "lower": "nc_m_3508051_se_17_060_20220622",
+   "upper_date": "2022-09-27",
+   "lower_date": "2022-06-22",
+   "mosaic_covers_centre": true,
+   "before": {
+    "step": 20.17,
+    "control": 21.0,
+    "ratio": 0.96,
+    "n": 422,
+    "band_max_step": 35.83,
+    "band_ratio": 1.71
+   },
+   "after": {
+    "step": 21.17,
+    "control": 20.83,
+    "ratio": 1.02,
+    "n": 422,
+    "band_max_step": 36.17,
+    "band_ratio": 1.74
+   },
+   "files": [
+    "docs/media/v3/f0/seam_matthews_z16_before.png",
+    "docs/media/v3/f0/seam_matthews_z16_after.png"
+   ]
+  }
+ ]
+}

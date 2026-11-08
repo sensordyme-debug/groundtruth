@@ -1,0 +1,31 @@
+{
+  "_doc": "SYNTHETIC what-if scenarios (engine/groundtruth/scenario.py, built by scripts/build_scenarios.py into data/scenarios/<data_versions.scenarios>/<id>/). Isolated from real layers: every record carries is_synthetic=true, a scenario id, its assumptions and the real sources it reads. A scenario is never a prediction and never evidence about the real world.",
+  "scenarios": [
+    {
+      "id": "ln_water_level",
+      "place": "Lake Norman",
+      "title": "Hypothetical extreme rainfall: Lake Norman rises above its base flood elevation",
+      "description": "What if an extreme rainfall event raised Lake Norman above FEMA's 100-year base flood elevation? For each hypothetical water level, the land connected to the lake that lies below that level in the 2016 lidar ground model, and the buildings and major roads it touches.",
+      "kind": "connected_bathtub",
+      "reference": {
+        "name": "FEMA static base flood elevation for Lake Norman (AE zone)",
+        "value_m": 231.648,
+        "value_ft": 760.0,
+        "datum": "NAVD88",
+        "source_id": "fema_nfhl"
+      },
+      "offsets_m": [0, 0.5, 1, 1.5, 2, 3],
+      "seed_water_body": "Lake Norman",
+      "grid_m": 2,
+      "assumptions": [
+        "Hypothetical: no real rainfall event, forecast or lake-level record is used",
+        "The water surface is flat at the stated level across the whole lake: no wind, waves, flow, timing or duration",
+        "Ground = USGS 3DEP lidar bare earth (acquired 2016), resampled to 2 m; changes since 2016 are not reflected",
+        "Only ground below the level AND connected to the lake is wet: no rainfall ponding, stormwater drainage, culverts, levees or walls are modelled",
+        "Dam operations (Cowans Ford) are not modelled",
+        "Where the lidar has no ground measurement the outcome is unknown, never dry",
+        "A building or road that touches the extent is not predicted to flood: floors, foundations and drainage are unknown"
+      ]
+    }
+  ]
+}

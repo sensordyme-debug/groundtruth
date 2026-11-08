@@ -17,6 +17,9 @@ from groundtruth.tools import _people
 def chat(engine_for, text: str, context: dict[str, Any] | None) -> dict[str, Any]:
     context = dict(context or {})
     # 1. policy BEFORE any model call: people data never reaches the LLM
+    # the previous request (client-supplied) is checked too: people text never reaches the model through last_text
+    if context.get("last_text") and _people(str(context["last_text"])):
+        context["last_text"] = None
     if _people(text) or EXPORT_RE.search(text) or os.environ.get("LOCAL_LLM", "1") != "1":
         out = rules_run(engine_for, text, context)
         out["brain"] = PLANNER

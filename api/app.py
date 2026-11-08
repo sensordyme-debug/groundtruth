@@ -8,11 +8,12 @@ from __future__ import annotations
 
 import json
 import os
+import time
 import threading
 from functools import lru_cache
 from typing import Any
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Request, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response
 from pydantic import BaseModel, Field
@@ -25,7 +26,20 @@ from groundtruth.tools import NOT_IMPLEMENTED, VERSION, Engine
 
 CONTRACT = "0.4"
 app = FastAPI(title="Groundtruth API", version=__version__)
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+from api import auth as _auth  # noqa: E402
+
+app.middleware("http")(_auth.middleware)  # authentication + server-side owner binding (docs/AUTH.md)
+app.include_router(_auth.router)
+_BOOT = _auth.ensure_bootstrap()
+if _BOOT:
+    print(f"[groundtruth] auth: created user 'owner'; its access token is in {_BOOT} (mode 0600). Not printed here.")
+# CORS: the app is served same-origin (the API serves the UI); cross-origin access only from local dev servers and the
+# tailnet host. Override with GROUNDTRUTH_CORS_ORIGINS (comma-separated). Was "*" (docs/SECURITY_AUDIT.md).
+_CORS = [o.strip() for o in os.environ.get("GROUNDTRUTH_CORS_ORIGINS", "").split(",") if o.strip()] or [
+    "http://127.0.0.1:8000", "http://localhost:8000", "http://127.0.0.1:5180", "http://localhost:5180",
+    "http://127.0.0.1:5173", "http://localhost:5173"]
+app.add_middleware(CORSMiddleware, allow_origins=_CORS, allow_origin_regex=r"https://[a-z0-9-]+\.[a-z0-9-]+\.ts\.net",
+                   allow_methods=["GET", "POST", "PATCH", "DELETE"], allow_headers=["Content-Type", "X-GT-Owner"])
 _provider = PublicDataProvider(download_scenes=False)
 _lock = threading.Lock()
 
@@ -203,20 +217,46 @@ def _warmup() -> None:
         import time as _t
 
         t0 = _t.perf_counter()
+        ph = WARM.setdefault("phases", {})  # per-phase startup profile, reported by /health
+        last = [t0]
+
+        def mark(name: str) -> None:
+            now = _t.perf_counter()
+            ph[name] = round((now - last[0]) * 1000)
+            last[0] = now
+
+        def idle() -> None:  # background warm-up yields to real requests (GPU + CPU are shared)
+            while _t.time() - LAST_REQ["t"] < 3.0 or LAST_REQ["active"] > 0:
+                _t.sleep(0.5)
+
         try:
             e = eng(None, None)
+            mark("engine_init")
             pc = e.pick_candidates("swimming pool")
+            mark("models_pick_candidates")
             feats = [f for f in pc.result.geojson["features"] if not f["properties"].get("no_clear_example")]
             ex = next((f["properties"]["example"] for f in feats if f["properties"]["sense_id"] == "backyard_pool"),
                       feats[0]["properties"]["example"])
             neg = [f["properties"]["example"] for f in feats if f["properties"]["example"] != ex]
             fa = e.find_all([ex], [], place=WARM["place"] if e.aoi == "county" else None, concept="swimming_pool",
                             soft_exclude=neg)
+            mark("find_all_warmup_place")
             hits = fa.result.geojson["features"]
             if hits:
                 e.refine(None, [ex, hits[0]["properties"]["example"]], [hits[-1]["properties"]["example"]], k=50,
                          concept="swimming_pool", candidates=[h["properties"]["example"] for h in hits])
+            mark("refine")
             WARM["core_ms"] = round((_t.perf_counter() - t0) * 1000)
+            # the flagship investigation (what the app runs first): derived set, FEMA, lidar, geography, evidence
+            try:
+                from groundtruth import investigate as _I
+                _inv = _I.start("Find residential properties near Lake Norman with swimming pools that intersect mapped "
+                                "100-year flood zones. Rank the strongest candidates.", {"_owner": "warmup"},
+                                lambda year: eng(None, year), lambda t: None, background=False)
+                WARM["flagship"] = _inv.status
+            except Exception as err:  # noqa: BLE001
+                WARM["flagship"] = f"error: {type(err).__name__}"
+            mark("flagship_investigation")
             if os.environ.get("LOCAL_LLM", "1") == "1":  # local LLM: one tiny plan so the first chat isn't cold
                 try:
                     from api.planner.llm import local
@@ -228,39 +268,52 @@ def _warmup() -> None:
                         WARM["llm"] = {"ok": False, "error": "unreachable (rules planner will answer)"}
                 except Exception as err:  # never block the API on the laptop
                     WARM["llm"] = {"ok": False, "error": f"{type(err).__name__}: {err}"[:160]}
-            if e.aoi == "county" and os.environ.get("GROUNDTRUTH_WARMUP_CHAIN", "1") == "1":
+            mark("llm_ping")
+
+            def legacy_chain() -> None:
+                """The conversational chat path (/agent/run) with exactly the contexts web/app-v2 sends, so plain
+                searches are warm too (planner + LLM over the laptop tunnel + the county overview)."""
+                if not (e.aoi == "county" and os.environ.get("GROUNDTRUTH_WARMUP_CHAIN", "1") == "1"):
+                    return
                 from api.planner.brain import chat
 
-                # BEFORE healthy: the conversational demo (web/app-v2) through the same chat path, with exactly the
-                # contexts that app sends (it carries place + last_text forward), so every message is warm after a restart
                 def ui_chain(texts, first=None):
                     c = dict(first or {"place": None, "last_text": None, "picked": [], "not": []})
                     for tx in texts:
+                        idle()
                         o = chat(lambda year: eng(None, year), tx, dict(c))
                         p = o.get("plan") or {}
                         c = {**c, "place": p.get("place") or c.get("place"), "last_text": p.get("effective_text") or tx}
                     return c
 
+                tc = _t.perf_counter()
                 ui_chain(["Houses with pools", "in Lake Norman", "with lake and dock access", "which got docks since 2020"])
                 ui_chain(["Swimming pools"])
                 c = ui_chain(["Swimming pools"], {"place": None, "last_text": None, "picked": ["backyard_pool"], "not": []})
                 ui_chain(["in Lake Norman"], c)
                 ui_chain(["pools in flood zones in Lake Norman", "who owns these houses"])
-                WARM["chain_ms"] = round((_t.perf_counter() - t0) * 1000)
-            # results are cached now: hand the index file pages back (page cache → Windows), incl. the 2020 index
+                WARM["chain_ms"] = round((_t.perf_counter() - tc) * 1000)
+
+            # GROUNDTRUTH_WARMUP_CHAIN_BLOCKING=1 restores the old order (healthy only after the chat chain), for A/B timing
+            blocking = os.environ.get("GROUNDTRUTH_WARMUP_CHAIN_BLOCKING", "0") == "1"
+            if blocking:
+                legacy_chain()
+                mark("chat_chain_blocking")
+            # results are cached now: hand the index file pages back (page cache to Windows), incl. the 2020 index
             e.index.release_pages()
             for other in e.__dict__.get("_other_index", {}).values():
                 other.release_pages()
-            WARM["done"] = True  # healthy; the other neighbourhoods warm in the background, yielding to requests
+            WARM["healthy_ms"] = round((_t.perf_counter() - t0) * 1000)
+            WARM["done"] = True  # healthy: the core and the flagship investigation are warm
+            if not blocking:
+                legacy_chain()  # background, yielding to requests
+                mark("chat_chain_background")
             if e.aoi == "county" and os.environ.get("GROUNDTRUTH_WARMUP_PLACES", "1") == "1":
-                def idle() -> None:  # background warm-up yields to real requests (GPU + CPU are shared)
-                    while _t.time() - LAST_REQ["t"] < 3.0 or LAST_REQ["active"] > 0:
-                        _t.sleep(0.5)
-
                 for pl in json.loads((config.SENSES_PATH.parent / "places.json").read_text())["places"]:
                     idle()
                     e.find_all([ex], [], place=pl, concept="swimming_pool", soft_exclude=neg)
                 WARM["places_ms"] = round((_t.perf_counter() - t0) * 1000)
+                mark("places_background")
                 e.index.release_pages()
         except Exception as err:  # never block health forever; report it
             WARM["error"] = f"{type(err).__name__}: {err}"[:300]
@@ -300,7 +353,9 @@ def _env(e: Envelope) -> JSONResponse:
 # ---------------- meta ----------------
 @app.get("/api/v1/health")
 def health() -> dict[str, Any]:
-    return {"ok": bool(WARM["done"]), "warming": not WARM["done"], "warmup": {k: WARM.get(k) for k in ("core_ms", "chain_ms", "places_ms", "ms", "error", "place", "llm")},
+    return {"ok": bool(WARM["done"]), "warming": not WARM["done"], "auth": "on" if _auth.enabled() else "off (development mode)",
+            "warmup": {k: WARM.get(k) for k in ("core_ms", "healthy_ms", "chain_ms", "places_ms", "ms", "error", "place", "llm",
+                                                "flagship", "phases")},
             "contract": CONTRACT, "engine_version": VERSION, "indexes": available_indexes(),
             "primary_year": _provider.primary_year}
 
@@ -444,17 +499,41 @@ def t_find_anything(b: FindAnythingIn) -> JSONResponse:
     return _env(eng(b.aoi, b.year).find_anything(b.text, bbox=b.bbox, place=b.place))
 
 
+_EXPORT_OWNERS = config.DATA / "app" / "v1" / "export_owners.jsonl"
+
+
+def _export_owner(name: str) -> str | None:
+    if not _EXPORT_OWNERS.exists():
+        return None
+    for line in _EXPORT_OWNERS.read_text().splitlines():
+        try:
+            r = json.loads(line)
+        except ValueError:
+            continue
+        if r.get("name") == name:
+            return r.get("owner")
+    return None
+
+
 @app.post("/api/v1/tools/export")
-def t_export(b: ExportIn) -> JSONResponse:
-    return _env(eng(b.aoi, b.year).export(b.geojson, b.format, title=b.title, summary=b.summary))
+def t_export(b: ExportIn, request: Request) -> JSONResponse:
+    env = eng(b.aoi, b.year).export(b.geojson, b.format, title=b.title, summary=b.summary)
+    name = (env.result.metrics or {}).get("download", "").rsplit("/", 1)[-1] if env.status == "ok" else ""
+    if name:  # who made this file: only they can download it
+        _EXPORT_OWNERS.parent.mkdir(parents=True, exist_ok=True)
+        with open(_EXPORT_OWNERS, "a") as fh:
+            fh.write(json.dumps({"name": name, "owner": request.headers.get("x-gt-owner"), "t": time.time()}) + "\n")
+    return _env(env)
 
 
 @app.get("/api/v1/exports/{name}")
-def export_file(name: str) -> Response:
+def export_file(name: str, request: Request) -> Response:
     d = (config.DATA / "out" / "exports").resolve()
     p = (d / name).resolve()
     if p.parent != d or not p.exists():
         raise HTTPException(404)
+    if _auth.enabled() and _export_owner(name) != request.headers.get("x-gt-owner"):
+        raise HTTPException(404)  # not yours (or made before ownership was recorded): indistinguishable from missing
     return FileResponse(p, filename=name)
 
 
@@ -604,10 +683,31 @@ def ui_index() -> Response:
     return JSONResponse({"ok": True, "ui": "not built (cd web/app-v2 && npm run build)", "classic": "/classic"})
 
 
+@app.get("/s/{sid}")
+def ui_session(sid: str) -> Response:  # deep link to a saved session: the app reads the id from the URL
+    return ui_index()
+
+
+from api.investigations_api import router as _inv_router  # noqa: E402
+from api.meta_api import router as _meta_router  # noqa: E402
+from api.point_api import router as _point_router  # noqa: E402
+from api.sessions import router as _sessions_router  # noqa: E402
+
+app.include_router(_sessions_router)
+app.include_router(_point_router)
+app.include_router(_inv_router)
+app.include_router(_meta_router)
+for _mod in ("api.places_api", "api.validation_api", "api.scenarios_api", "api.terrain_api"):  # optional routers (present once built); a missing one is skipped
+    try:
+        app.include_router(__import__(_mod, fromlist=["router"]).router)
+    except ImportError as _e:
+        print(f"[groundtruth] optional router {_mod} not loaded: {_e}")
+
+
 @app.get("/v2assets/{path:path}")
 def ui_v2_assets(path: str) -> Response:
     p = (_V2 / "v2assets" / path).resolve()
-    if not str(p).startswith(str((_V2 / "v2assets").resolve())) or not p.exists():
+    if not p.is_relative_to((_V2 / "v2assets").resolve()) or not p.exists():
         raise HTTPException(404)
     return FileResponse(p)
 
@@ -622,6 +722,6 @@ def ui_classic() -> Response:
 @app.get("/assets/{path:path}")
 def ui_assets(path: str) -> Response:
     p = (_DIST / "assets" / path).resolve()
-    if not str(p).startswith(str((_DIST / "assets").resolve())) or not p.exists():
+    if not p.is_relative_to((_DIST / "assets").resolve()) or not p.exists():
         raise HTTPException(404)
     return FileResponse(p)

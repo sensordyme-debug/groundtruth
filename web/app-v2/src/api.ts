@@ -17,9 +17,9 @@ export type AgentResponse = {
 export type Context = { place?: string | null; last_text?: string | null; picked?: string[]; not?: string[];
   rejected?: string[]; accepted?: string[] };
 
-export async function agentRun(text: string, context: Context): Promise<AgentResponse> {
+export async function agentRun(text: string, context: Context, signal?: AbortSignal): Promise<AgentResponse> {
   const r = await fetch("/api/v1/agent/run", {
-    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text, context }),
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text, context }), signal,
   });
   if (!r.ok) throw new Error(`agent: HTTP ${r.status}`);
   return r.json();

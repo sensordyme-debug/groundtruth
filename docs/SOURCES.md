@@ -32,6 +32,7 @@ Every dataset and model Groundtruth uses. One-line summary per item for sign-off
 |---|---|---|---|---|---|---|
 | OpenStreetMap: motorways (2,199 segments; I-485 = 391, I-77/I-85 flagged), LYNX light rail (207 segments, 74 station nodes), water (13,991), UNC Charlotte campus (1). Tag-filtered first (pyosmium BackReferenceWriter, 96 MB), then clipped to the county | https://download.geofabrik.de/north-america/us/north-carolina.html | extract 2026-11-06, **copied from ORYN cache** | ODbL 1.0 | Yes | **Yes** ("© OpenStreetMap contributors"); share-alike applies to derived databases | Clipped to the county with pyosmium |
 | OSM reference set (weak, per concept): swimming pools 1,685 · surface parking 6,278 · warehouses ≥ 2,000 m² 348 · construction 465 · solar 63 | https://www.openstreetmap.org/copyright | extract 2026-11-06 (via ORYN cache) | ODbL 1.0 | Yes | **Yes** ("© OpenStreetMap contributors") | `data/reference/osm_<concept>.geojson` (`scripts/fetch_osm_reference.py`). Known positives for recall checks only: incomplete, **not** the human test set, never written to `data/labels/` |
+| OSM community infrastructure (registry `community_v1`): facilities (hospital, clinic, fire_station, police, ambulance_station, school, college, university, shelter, townhall, community_centre, library) county-wide + 10 km ring; bridges + waterways (river/stream/canal/drain/ditch, dam, weir) in the Lake Norman demo bbox + 2 km | https://download.geofabrik.de/north-america/us/north-carolina.html | extract 2026-11-06T21:21:21Z (local `data/osm/north-carolina.osm.pbf`, no download) | ODbL 1.0 | Yes | **Yes** ("© OpenStreetMap contributors"); share-alike applies to derived databases | `data/community/v1/` built by `scripts/build_community.py` (pyosmium streaming passes). Layers `community_*` via `get_layer`. Only osm_id/kind/name/ref kept: no people-related tags, no school ratings, no critical utilities. OSM completeness is volunteer-dependent |
 | FEMA NFHL flood hazard zones (MapServer 28, DFIRM 37119C) | https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/28 | 2026-11-07 | Public domain (US Government work, FEMA) | Yes | No (courtesy credit "FEMA National Flood Hazard Layer") | Raw: `data/layers/fema_flood_zones.geojson`, 34,704 polygons, 267 MB, paged by DFIRM_ID 37119C (local, gitignored). Web: `data/layers/web/fema_flood_zones.geojson`, 8,753 regulatory polygons (1% SFHA + 0.2% band, minimal-hazard X dropped), simplified ~3 m, 8.4 MB, built by `scripts/build_web_layers.py`. Not for regulatory determinations. |
 | Overture Maps places (release 2026-10-21.0) | https://docs.overturemaps.org/attribution/ | 2026-11-07 | Per-record check over the 79,385 Mecklenburg places: CDLA-Permissive-2.0 (Meta 35,418 · BrightQuery 23,214 · Microsoft 13,995 · others 768), **Apache-2.0 (Foursquare 4,864)**, CC0-1.0 (AllThePlaces 1,126) | Yes | Yes (Overture + listed sources) | Only id, name, category, confidence and per-record source licence kept. No phones, emails, websites or addresses. |
 | Overture Maps buildings (release 2026-10-21.0) | https://docs.overturemaps.org/attribution/ | 2026-11-07 | ODbL 1.0 | Yes | **Yes** ("© OpenStreetMap contributors, Overture Maps Foundation"); share-alike on derived databases | `overture_buildings.parquet` |
@@ -61,6 +62,7 @@ Every dataset and model Groundtruth uses. One-line summary per item for sign-off
 | @fontsource/inter, @fontsource/ibm-plex-mono (UI fonts, bundled locally) | SIL OFL 1.1 (fonts) / MIT (packaging) |
 | React 18.3.1, Vite 5.4.11, TypeScript 5.6.3, @vitejs/plugin-react | MIT / MIT / Apache-2.0 / MIT |
 | Playwright 1.64.1 (Python; demo_check v2, compare screenshots: dev tool only) | Apache-2.0 |
+| lucide-react 0.460.0 (UI icons in web/app-v2) | ISC |
 | web/app-v2 (the conversational app): no new dependencies (same React, MapLibre GL 4.7.1, Vite, Inter as the classic UI) | — |
 
 ### Places config
@@ -84,6 +86,7 @@ use, but nothing below is in use yet unless it is listed above. Each item's attr
 | TorchGeo (code) | MIT | "TorchGeo © Microsoft Corporation / TorchGeo contributors, MIT License" |
 | TorchGeo Tile2Vec NAIP weights | MIT | "Tile2Vec (Jean et al., 2019), MIT License" |
 | TiTiler / rio-tiler | MIT / BSD-3-Clause | "TiTiler © Development Seed (MIT); rio-tiler (BSD-3-Clause)" |
+| SciPy (display-mosaic build only: `scripts/heavy/build_mosaic.py`, distance transform + bilinear sampling; already pinned in `scripts/heavy/requirements-heavy.txt`). No new dependency: the mosaic uses rasterio/GDAL (COG + JPEG), NumPy, Shapely, rio-tiler, morecantile (MIT) | BSD-3-Clause | "SciPy © SciPy developers, BSD 3-Clause" |
 | PDAL | BSD | "PDAL © Hobu, Inc., BSD License" |
 | USGS 3DEP lidar (`s3://usgs-lidar-public`, EPT) | US Government Public Domain | "Map services and data available from U.S. Geological Survey, National Geospatial Program." |
 | Valhalla / OSRM | MIT / BSD-2-Clause | "Valhalla contributors (MIT)" / "Project OSRM (BSD-2-Clause)" + "© OpenStreetMap contributors" on routes |
@@ -114,3 +117,11 @@ use, but nothing below is in use yet unless it is listed above. Each item's attr
 **Decision (Monish, 2026-11-08):** Grounding DINO and Florence-2 are accepted for Groundtruth: weights Apache/MIT;
 training data partly research-only; legal review required before ORYN commercial use. PDAL is not used (laspy +
 lazrs read the 3DEP EPT directly).
+
+### Boundaries and validation (2026-11-08, intelligence branch)
+| Data | Licence | Use |
+|---|---|---|
+| OSM administrative boundaries (admin_level 8) + neighbourhood polygons, from the local NC .osm.pbf | ODbL 1.0 (© OpenStreetMap contributors) | `data/boundaries/v1` municipalities (Charlotte, Huntersville, Matthews, Mint Hill, Pineville) and 114 neighbourhoods |
+| US Census TIGER/Line places (Cornelius, Davidson) and ZCTA 2020 (36 ZIP areas, via TIGERweb) | Public domain (US Census Bureau) | `data/boundaries/v1` |
+| Validation samples (`data/validation/v1`) | Derived from the engine's own predictions over NAIP (public domain) + Overture buildings (ODbL / CDLA) | human review only; never written to `data/labels/` |
+| Place providers (Foursquare, Yelp, Google) | Provider terms; see docs/compliance/API_TERMS_REVIEW.md | live API, not cached datasets; Google disabled by default |

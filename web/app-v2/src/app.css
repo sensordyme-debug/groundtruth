@@ -53,3 +53,5 @@ button:focus-visible, textarea:focus-visible, input:focus-visible { outline: 2px
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
 .gt-ta:focus-visible { outline: none; }  /* the composer card is the focus target */
+.gt-attr { width: 24px; height: 24px; border-radius: 999px; font-size: 12px; font-weight: 500; font-style: italic; color: #5c5c5c; cursor: pointer; padding: 0; flex: none; }
+.gt-attr:hover { color: var(--ink); }
