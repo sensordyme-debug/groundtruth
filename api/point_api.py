@@ -23,14 +23,16 @@ class PointFindIn(BaseModel):
     area: dict[str, Any] | None = None
     year: int | None = None
     k: int = Field(500, ge=10, le=2000)
-    outline_top: int = Field(120, ge=0, le=600)
+    outline_top: int | None = Field(None, ge=0, le=600)
+    calibrate: bool = True  # per-click background calibration (conf/investigate.json find_like); false = the raw scan
 
 
 @router.post("/point/find")
 def point_find(b: PointFindIn) -> JSONResponse:
     from api.app import _env, eng
     from groundtruth.envelope import declined
-    from groundtruth.point import clip_to, resolve
+    from groundtruth.investigate import conf as inv_conf
+    from groundtruth.point import calibrate, clip_to, resolve
 
     t0 = time.perf_counter()
     e = eng(None, b.year)
@@ -44,10 +46,28 @@ def point_find(b: PointFindIn) -> JSONResponse:
     if area.get("geojson") and not bbox:
         from shapely.geometry import shape
         bbox = list(shape(area["geojson"]).bounds)
+    fl = inv_conf()["find_like"]
+    ot = fl["outline_top"] if b.outline_top is None else b.outline_top
+    # "not this" clicks go to the scan as SOFT negatives (a hard negative there drops every object whose patch is closer
+    # to it than to the example, which wiped out true matches: 137 → 3 after one click); the calibration below then
+    # rejects, patch by patch, results closer to a "not this" example than to the examples
     if place or bbox:
-        env = e.find_all(pos, neg, place=None if bbox else place, bbox=bbox, concept=None, outline_top=b.outline_top)
+        env = e.find_all(pos, [], place=None if bbox else place, bbox=bbox, concept=None, outline_top=ot, soft_exclude=neg)
     else:
-        env = e.find_all(pos, neg, k=b.k, concept=None, outline_top=min(b.outline_top, 60))
+        env = e.find_all(pos, [], k=b.k, concept=None, outline_top=min(ot, 60), soft_exclude=neg)
+    cal = {"calibrated": False}
+    if env.status != "declined" and env.result and b.calibrate:
+        t1 = time.perf_counter()
+        box = bbox or (e.place_bbox(place) if place else None)
+        fs, cal = calibrate(e.index, env.result.geojson["features"], pos, neg, box, e.year, fl)
+        cal["ms"] = round((time.perf_counter() - t1) * 1000, 1)
+        env.result.geojson["features"] = fs
+        m = env.result.metrics
+        m["count_before_calibration"] = m.get("count_detected", m.get("count"))
+        m["count_detected"] = m["count"] = len(fs)
+        env.limits.append(f"kept only results more similar to your examples than {float(fl['bg_quantile']) * 100:g} % of "
+                          f"{fl['bg_samples']} background patches sampled from the same area (threshold "
+                          f"{cal.get('threshold')}); similarities are uncalibrated, not probabilities")
     if env.status != "declined" and area.get("geojson") and env.result:
         fs = clip_to(env.result.geojson["features"], area["geojson"])
         env.result.geojson["features"] = fs
@@ -57,7 +77,7 @@ def point_find(b: PointFindIn) -> JSONResponse:
         env.limits.append("clipped to the drawn area (features whose geometry intersects it)")
     out = env.model_dump(mode="json")
     if out.get("result"):
-        out["result"]["metrics"].update(examples=pos, negatives=neg, resolved={"positives": prec, "negatives": nrec},
+        out["result"]["metrics"].update(examples=pos, negatives=neg, resolved={"positives": prec, "negatives": nrec}, calibration=cal,
                                         exhaustive=bool(place or bbox), point_find_ms=round((time.perf_counter() - t0) * 1000))
     out["tool"] = "point_find"
     return JSONResponse(out)

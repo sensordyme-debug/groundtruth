@@ -93,6 +93,72 @@ def resolve(index, items: Sequence[dict[str, Any]], year: int) -> tuple[list[str
     return ids, rec
 
 
+def _unit(v):
+    import numpy as np
+    v = np.asarray(v, dtype=np.float32)
+    return v / (np.linalg.norm(v, axis=-1, keepdims=True) + 1e-8)
+
+
+def _cell_vecs(index, ids: Sequence[str]):
+    import numpy as np
+
+    from groundtruth.tools import parse_example
+    out = []
+    for ex in ids:
+        cid, cell = parse_example(ex)
+        if cid in index.pos and cell is not None:
+            out.append(index.cells(index.pos[cid])[cell])
+    return _unit(np.stack(out)) if out else None
+
+
+def calibrate(index, feats: list[dict[str, Any]], positives: Sequence[str], negatives: Sequence[str],
+              bbox: Sequence[float] | None, year: int, conf: dict[str, Any]) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Per-click calibration (no labels, no training): sample background patches from the same area, measure how similar
+    they are to the examples, and keep only candidates above the ``bg_quantile`` of that background and closer to the
+    examples than to any "not this" example. Each kept feature records ``sim_example`` and ``sim_threshold`` (cosine
+    similarities: uncalibrated, not probabilities). Deterministic (seeded sample)."""
+    import numpy as np
+
+    from groundtruth.tiler import chips_for_bbox
+    P = _cell_vecs(index, positives)
+    if P is None or not feats:
+        return feats, {"calibrated": False}
+    N = _cell_vecs(index, negatives)
+    rng = np.random.default_rng(int(conf.get("seed", 7)))
+    if bbox:
+        rows = [index.pos[c.chip_id] for c in chips_for_bbox(bbox, year) if c.chip_id in index.pos]
+    else:
+        rows = list(range(len(index)))
+    rows = np.asarray(rows)
+    n = int(conf.get("bg_samples", 3000))
+    pick_r = rows[rng.integers(0, len(rows), n)]
+    pick_c = rng.integers(0, index.grid * index.grid, n)
+    bg = _unit(np.stack([index.cells(int(r))[int(c)] for r, c in zip(pick_r, pick_c)]))
+    bg_sim = (bg @ P.T).max(axis=1)
+    tau = float(np.quantile(bg_sim, float(conf.get("bg_quantile", 0.995))))
+    margin = float(conf.get("neg_margin", 0.0))
+    from groundtruth.tools import parse_example
+    kept = []
+    for f in feats:
+        ex = (f.get("properties") or {}).get("example")
+        if not ex:
+            continue
+        cid, cell = parse_example(ex)
+        if cid not in index.pos or cell is None:
+            continue
+        v = _unit(index.cells(index.pos[cid])[cell])
+        sp = float((P @ v).max())
+        sn = float((N @ v).max()) if N is not None else -1.0
+        if sp >= tau and sp > sn + margin:
+            f["properties"].update(sim_example=round(sp, 3), sim_threshold=round(tau, 3),
+                                   **({"sim_not_this": round(sn, 3)} if N is not None else {}))
+            kept.append(f)
+    # keep the scan's own ranking (patch-level score): re-sorting by the coarser cell similarity measurably hurt
+    # precision@24 (docs/EVALUATION.md, "Point at anything")
+    return kept, {"calibrated": True, "threshold": round(tau, 3), "bg_quantile": conf.get("bg_quantile"),
+                  "bg_samples": n, "before": len(feats), "after": len(kept)}
+
+
 def clip_to(features: list[dict[str, Any]], geojson: dict[str, Any]) -> list[dict[str, Any]]:
     """Keep the features whose geometry intersects a drawn polygon (EPSG:4326)."""
     poly = shape(geojson)
