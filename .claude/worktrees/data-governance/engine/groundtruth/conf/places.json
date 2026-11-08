@@ -1,0 +1,203 @@
+{
+ "_source": "OpenStreetMap Nominatim (ODbL, \u00a9 OpenStreetMap contributors), 2026-11-07",
+ "places": {
+  "Ballantyne": {
+   "bbox": [
+    -80.870246,
+    35.034659,
+    -80.830246,
+    35.074659
+   ],
+   "osm": "node/7402919289",
+   "display_name": "Ballantyne, Charlotte, Mecklenburg County, North Carolina, 28277, United States",
+   "type": "suburb"
+  },
+  "NoDa": {
+   "bbox": [
+    -80.825777,
+    35.226994,
+    -80.785777,
+    35.266994
+   ],
+   "osm": "node/2223541049",
+   "display_name": "NoDa, Charlotte, Mecklenburg County, North Carolina, 28206, United States",
+   "type": "suburb"
+  },
+  "South End": {
+   "bbox": [
+    -80.878831,
+    35.192593,
+    -80.838831,
+    35.232593
+   ],
+   "osm": "node/4780150588",
+   "display_name": "South End, Charlotte, Mecklenburg County, North Carolina, 28203, United States",
+   "type": "suburb"
+  },
+  "Myers Park": {
+   "bbox": [
+    -80.853461,
+    35.171693,
+    -80.813461,
+    35.211693
+   ],
+   "osm": "node/154038238",
+   "display_name": "Myers Park, Charlotte, Mecklenburg County, North Carolina, 28274, United States",
+   "type": "suburb"
+  },
+  "Lake Norman": {
+   "bbox": [
+    -80.958699,
+    35.427332,
+    -80.844396,
+    35.514785
+   ],
+   "osm": "relation/299512",
+   "display_name": "Lake Norman, Mooresville, Iredell County, North Carolina, United States",
+   "type": "reservoir"
+  },
+  "University City": {
+   "bbox": [
+    -80.794095,
+    35.27854,
+    -80.710707,
+    35.343305
+   ],
+   "osm": "relation/12345419",
+   "display_name": "University City, Charlotte, Mecklenburg County, North Carolina, United States",
+   "type": "suburb"
+  },
+  "Matthews": {
+   "bbox": [
+    -80.76337,
+    35.080975,
+    -80.654169,
+    35.173339
+   ],
+   "osm": "relation/176954",
+   "display_name": "Matthews, Mecklenburg County, North Carolina, United States",
+   "type": "administrative"
+  },
+  "Uptown": {
+   "bbox": [
+    -80.862492,
+    35.215147,
+    -80.828508,
+    35.242135
+   ],
+   "osm": "relation/12345346",
+   "display_name": "Uptown, Charlotte, Mecklenburg County, North Carolina, United States",
+   "type": "yes"
+  },
+  "Cornelius": {
+   "bbox": [
+    -80.9465,
+    35.439268,
+    -80.816112,
+    35.507327
+   ],
+   "osm": "relation/179854",
+   "display_name": "Cornelius, Mecklenburg County, North Carolina, 28031, United States",
+   "type": "administrative"
+  },
+  "Huntersville": {
+   "bbox": [
+    -80.96122,
+    35.347522,
+    -80.752168,
+    35.455266
+   ],
+   "osm": "relation/179853",
+   "display_name": "Huntersville, Mecklenburg County, North Carolina, 28087, United States",
+   "type": "administrative"
+  },
+  "Mint Hill": {
+   "bbox": [
+    -80.713673,
+    35.129634,
+    -80.591401,
+    35.224054
+   ],
+   "osm": "relation/179857",
+   "display_name": "Mint Hill, Mecklenburg County, North Carolina, 28227, United States",
+   "type": "administrative"
+  },
+  "Pineville": {
+   "bbox": [
+    -80.919743,
+    35.053494,
+    -80.853932,
+    35.109507
+   ],
+   "osm": "relation/176951",
+   "display_name": "Pineville, Mecklenburg County, North Carolina, 28134, United States",
+   "type": "administrative"
+  },
+  "Davidson": {
+   "bbox": [
+    -80.872451,
+    35.442465,
+    -80.768755,
+    35.512389
+   ],
+   "osm": "relation/179858",
+   "display_name": "Davidson, Mecklenburg County, North Carolina, United States",
+   "type": "administrative"
+  },
+  "Plaza Midwood": {
+   "bbox": [
+    -80.830849,
+    35.200271,
+    -80.790849,
+    35.240271
+   ],
+   "osm": "node/153904389",
+   "display_name": "Plaza Midwood, Charlotte, Mecklenburg County, North Carolina, 28205, United States",
+   "type": "suburb"
+  },
+  "Dilworth": {
+   "bbox": [
+    -80.870914,
+    35.186612,
+    -80.830914,
+    35.226612
+   ],
+   "osm": "node/154397864",
+   "display_name": "Dilworth, Charlotte, Mecklenburg County, North Carolina, 28203, United States",
+   "type": "suburb"
+  },
+  "SouthPark": {
+   "bbox": [
+    -80.850898,
+    35.128464,
+    -80.810898,
+    35.168464
+   ],
+   "osm": "node/153965148",
+   "display_name": "SouthPark, Charlotte, Mecklenburg County, North Carolina, 28287, United States",
+   "type": "suburb"
+  },
+  "Steele Creek": {
+   "bbox": [
+    -80.997779,
+    35.116448,
+    -80.957779,
+    35.156448
+   ],
+   "osm": "node/7940561274",
+   "display_name": "Steele Creek, Charlotte, Mecklenburg County, North Carolina, 28273, United States",
+   "type": "suburb"
+  },
+  "UNC Charlotte": {
+   "bbox": [
+    -80.74675,
+    35.296975,
+    -80.721494,
+    35.315842
+   ],
+   "osm": "way/168664114",
+   "display_name": "The University of North Carolina at Charlotte",
+   "type": "university"
+  }
+ }
+}

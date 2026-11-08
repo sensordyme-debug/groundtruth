@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "groundtruth"
+version = "0.1.0"
+description = "Teach the map anything: text/example-driven search over aerial imagery (Mecklenburg County, NC)."
+license = { text = "MIT" }
+requires-python = ">=3.11"
+dependencies = [
+  "pydantic>=2",
+  "numpy",
+  "shapely>=2",
+  "pyproj",
+  "pillow",
+  "rasterio",
+  "pystac-client",
+  "planetary-computer",
+  "httpx",
+  "pyarrow",
+]
+
+[project.optional-dependencies]
+api = ["fastapi", "uvicorn[standard]"]
+ml = ["torch", "torchvision", "open_clip_torch", "transformers", "faiss-cpu", "scikit-learn"]
+dev = ["pytest"]
+
+[tool.setuptools.packages.find]
+where = ["engine"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["engine", "."]

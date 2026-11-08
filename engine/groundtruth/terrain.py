@@ -176,9 +176,9 @@ def profile(line_lonlat: Sequence[Sequence[float]], n: int = 200, place: str | N
     R = int(round(coverage_radius_m()))
     P = pad_px(R)
     with rasterio.open(folder / "dtm.tif") as s_dtm, rasterio.open(folder / "dsm.tif") as s_dsm:
-        inv = ~s_dtm.transform
-        cols, rows = inv * (xy[:, 0], xy[:, 1])
-        cols, rows = np.floor(cols).astype(np.int64), np.floor(rows).astype(np.int64)
+        tr = s_dtm.transform
+        cols = np.floor((xy[:, 0] - tr.c) / tr.a).astype(np.int64)
+        rows = np.floor((xy[:, 1] - tr.f) / tr.e).astype(np.int64)
         inside = (cols >= 0) & (cols < s_dtm.width) & (rows >= 0) & (rows < s_dtm.height)
         B = 256
         groups: dict[tuple[int, int], list[int]] = {}

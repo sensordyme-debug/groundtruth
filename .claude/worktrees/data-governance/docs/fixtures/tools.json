@@ -1,0 +1,63 @@
+{
+ "request": {
+  "method": "GET",
+  "path": "/api/v1/tools"
+ },
+ "response": [
+  {
+   "tool": "search_text",
+   "implemented": true,
+   "version": "0.2.0"
+  },
+  {
+   "tool": "pick_candidates",
+   "implemented": true,
+   "version": "0.2.0"
+  },
+  {
+   "tool": "find_similar",
+   "implemented": true,
+   "version": "0.2.0"
+  },
+  {
+   "tool": "find_all",
+   "implemented": true,
+   "version": "0.2.0"
+  },
+  {
+   "tool": "refine",
+   "implemented": true,
+   "version": "0.2.0"
+  },
+  {
+   "tool": "measure",
+   "implemented": true,
+   "version": "0.2.0"
+  },
+  {
+   "tool": "add_layer",
+   "implemented": true,
+   "version": "0.2.0"
+  },
+  {
+   "tool": "filter",
+   "implemented": true,
+   "version": "0.2.0"
+  },
+  {
+   "tool": "export",
+   "implemented": true,
+   "version": "0.2.0"
+  },
+  {
+   "tool": "outline",
+   "implemented": true,
+   "version": "0.2.0"
+  },
+  {
+   "tool": "compare_years",
+   "implemented": true,
+   "version": "0.2.0"
+  }
+ ]
+}

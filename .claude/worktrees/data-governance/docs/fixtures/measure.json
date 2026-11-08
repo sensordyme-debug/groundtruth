@@ -1,0 +1,335 @@
+{
+ "request": {
+  "method": "POST",
+  "path": "/api/v1/tools/measure",
+  "body": {
+   "aoi": "south_charlotte",
+   "year": 2022,
+   "geojson": {
+    "type": "FeatureCollection",
+    "features": [
+     {
+      "type": "Feature",
+      "id": "2022_e4480_n33669",
+      "properties": {
+       "score": 0.7612
+      },
+      "geometry": {
+       "type": "Polygon",
+       "coordinates": [
+        [
+         [
+          -80.8222085,
+          35.0515079
+         ],
+         [
+          -80.822024,
+          35.0515079
+         ],
+         [
+          -80.822024,
+          35.0516597
+         ],
+         [
+          -80.8222085,
+          35.0516597
+         ],
+         [
+          -80.8222085,
+          35.0515079
+         ]
+        ]
+       ]
+      }
+     },
+     {
+      "type": "Feature",
+      "id": "2022_e4482_n33668",
+      "properties": {
+       "score": 0.755
+      },
+      "geometry": {
+       "type": "Polygon",
+       "coordinates": [
+        [
+         [
+          -80.819684,
+          35.0506169
+         ],
+         [
+          -80.8194995,
+          35.0506169
+         ],
+         [
+          -80.8194995,
+          35.0507687
+         ],
+         [
+          -80.819684,
+          35.0507687
+         ],
+         [
+          -80.819684,
+          35.0506169
+         ]
+        ]
+       ]
+      }
+     },
+     {
+      "type": "Feature",
+      "id": "2022_e4478_n33671",
+      "properties": {
+       "score": 0.7521
+      },
+      "geometry": {
+       "type": "Polygon",
+       "coordinates": [
+        [
+         [
+          -80.8247306,
+          35.0535892
+         ],
+         [
+          -80.824546,
+          35.0535892
+         ],
+         [
+          -80.824546,
+          35.053741
+         ],
+         [
+          -80.8247306,
+          35.053741
+         ],
+         [
+          -80.8247306,
+          35.0535892
+         ]
+        ]
+       ]
+      }
+     },
+     {
+      "type": "Feature",
+      "id": "2022_e4480_n33679",
+      "properties": {
+       "score": 0.7433
+      },
+      "geometry": {
+       "type": "Polygon",
+       "coordinates": [
+        [
+         [
+          -80.8221857,
+          35.0620474
+         ],
+         [
+          -80.8220011,
+          35.0620474
+         ],
+         [
+          -80.8220011,
+          35.0621991
+         ],
+         [
+          -80.8221857,
+          35.0621991
+         ],
+         [
+          -80.8221857,
+          35.0620474
+         ]
+        ]
+       ]
+      }
+     },
+     {
+      "type": "Feature",
+      "id": "2022_e4478_n33683",
+      "properties": {
+       "score": 0.7432
+      },
+      "geometry": {
+       "type": "Polygon",
+       "coordinates": [
+        [
+         [
+          -80.8248879,
+          35.0662065
+         ],
+         [
+          -80.8247033,
+          35.0662065
+         ],
+         [
+          -80.8247033,
+          35.0663582
+         ],
+         [
+          -80.8248879,
+          35.0663582
+         ],
+         [
+          -80.8248879,
+          35.0662065
+         ]
+        ]
+       ]
+      }
+     }
+    ]
+   }
+  }
+ },
+ "response": {
+  "tool": "measure",
+  "version": "0.2.0",
+  "status": "ok",
+  "result": {
+   "geojson": {
+    "type": "FeatureCollection",
+    "features": [
+     {
+      "type": "Feature",
+      "id": "2022_e4480_n33669",
+      "geometry": {
+       "type": "Polygon",
+       "coordinates": [
+        [
+         [
+          -80.8222085,
+          35.0515079
+         ],
+         [
+          -80.822024,
+          35.0515079
+         ],
+         [
+          -80.822024,
+          35.0516597
+         ],
+         [
+          -80.8222085,
+          35.0516597
+         ],
+         [
+          -80.8222085,
+          35.0515079
+         ]
+        ]
+       ]
+      },
+      "properties": {
+       "score": 0.7612,
+       "area_m2": 283.24,
+       "area_acres": 0.06999,
+       "perimeter_m": 67.32
+      }
+     },
+     {
+      "type": "Feature",
+      "id": "2022_e4482_n33668",
+      "geometry": {
+       "type": "Polygon",
+       "coordinates": [
+        [
+         [
+          -80.819684,
+          35.0506169
+         ],
+         [
+          -80.8194995,
+          35.0506169
+         ],
+         [
+          -80.8194995,
+          35.0507687
+         ],
+         [
+          -80.819684,
+          35.0507687
+         ],
+         [
+          -80.819684,
+          35.0506169
+         ]
+        ]
+       ]
+      },
+      "properties": {
+       "score": 0.755,
+       "area_m2": 283.25,
+       "area_acres": 0.06999,
+       "perimeter_m": 67.32
+      }
+     },
+     {
+      "type": "Feature",
+      "id": "2022_e4478_n33671",
+      "geometry": {
+       "type": "Polygon",
+       "coordinates": [
+        [
+         [
+          -80.8247306,
+          35.0535892
+         ],
+         [
+          -80.824546,
+          35.0535892
+         ],
+         [
+          -80.824546,
+          35.053741
+         ],
+         [
+          -80.8247306,
+          35.053741
+         ],
+         [
+          -80.8247306,
+          35.0535892
+         ]
+        ]
+       ]
+      },
+      "properties": {
+       "score": 0.7521,
+       "area_m2": 283.39,
+       "area_acres": 0.07003,
+       "perimeter_m": 67.34
+      }
+     }
+    ]
+   },
+   "metrics": {
+    "count": 5,
+    "area_m2_total": 1416.21,
+    "area_acres_total": 0.35,
+    "median_area_m2": 283.24
+   }
+  },
+  "confidence": 1.0,
+  "method": "Planar measurement after reprojection EPSG:4326 \u2192 EPSG:32617 (UTM 17N)",
+  "assumptions": [
+   "Input geometry is EPSG:4326"
+  ],
+  "limits": [
+   "UTM 17N distortion < 0.1% in Mecklenburg",
+   "Distances are to the simplified web build of a layer when one exists (~3 m)"
+  ],
+  "sources": [],
+  "steps": [
+   {
+    "phase": "measure",
+    "detail": "5 features in EPSG:32617",
+    "ms": 2.57
+   }
+  ],
+  "declined_reason": null,
+  "_fixture": {
+   "truncated_features": 2
+  }
+ }
+}

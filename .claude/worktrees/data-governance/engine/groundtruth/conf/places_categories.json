@@ -1,0 +1,25 @@
+{
+  "_doc": "Words → Overture places categories (category = basic_category; taxonomy = taxonomy.primary), building classes for 'houses' etc., named landmarks, and travel modes. Used by find_place / find_buildings / the planner. Data: Overture places (CDLA-Permissive-2.0 / CC0 / Apache per record) and buildings (ODbL).",
+  "categories": {
+    "school": {"words": ["school", "schools"], "category": ["elementary_school", "middle_school", "high_school", "school", "preschool", "specialty_school"]},
+    "restaurant": {"words": ["restaurant", "restaurants"], "category": ["restaurant", "fast_food_restaurant"]},
+    "park": {"words": ["park", "parks"], "category": ["park", "dog_park"]},
+    "grocery": {"words": ["grocery", "groceries", "grocery store", "grocery stores", "supermarket", "supermarkets"], "taxonomy": ["grocery_store", "supermarket"]},
+    "hospital": {"words": ["hospital", "hospitals"], "category": ["hospital", "specialty_hospital"]},
+    "church": {"words": ["church", "churches", "place of worship", "places of worship"], "category": ["christian_place_of_worship", "place_of_worship", "muslim_place_of_worship", "jewish_place_of_worship", "buddhist_place_of_worship", "hindu_place_of_worship"]},
+    "gym": {"words": ["gym", "gyms", "fitness", "fitness centre", "fitness center"], "category": ["gym", "fitness_studio", "sport_or_fitness_facility"]},
+    "airport": {"words": ["airport", "airports"], "category": ["airport"]}
+  },
+  "landmarks": {
+    "the airport": {"name": "Charlotte Douglas Airport (CLT)", "category": "airport"},
+    "airport": {"name": "Charlotte Douglas Airport (CLT)", "category": "airport"}
+  },
+  "buildings": {
+    "house": {"words": ["house", "houses", "home", "homes"], "classes": ["house", "detached", "semidetached_house", "terrace", "residential", "bungalow"]},
+    "apartment": {"words": ["apartment", "apartments", "apartment building", "apartment buildings"], "classes": ["apartments"]},
+    "building": {"words": ["building", "buildings"], "classes": []},
+    "warehouse": {"words": ["warehouse building", "warehouse buildings", "warehouse", "warehouses"], "classes": ["warehouse"], "layer": "osm_warehouses"}
+  },
+  "buildings_class_coverage_note": "Overture building class is set for ~35% of county buildings (137,774 of 393,968); class-based counts (e.g. houses) miss unclassified buildings.",
+  "modes": {"drive": "auto", "driving": "auto", "car": "auto", "walk": "pedestrian", "walking": "pedestrian", "foot": "pedestrian", "bike": "bicycle", "cycling": "bicycle", "bicycle": "bicycle"}
+}

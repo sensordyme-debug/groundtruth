@@ -1,0 +1,599 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Groundtruth</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#f4f4f2;font-family:Inter,system-ui,sans-serif;color:#191919;-webkit-font-smoothing:antialiased}
+*{box-sizing:border-box}
+button{font:inherit;color:inherit}
+a{color:#191919}a:hover{color:#5c5c5c}
+.gt-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.gt-pill{border:1px solid #e7e6e3;background:rgba(255,255,255,.72);border-radius:999px;padding:8px 15px;font-size:13px;color:#5c5c5c;cursor:pointer;min-height:36px;transition:background .18s ease,color .18s ease,border-color .18s ease}
+.gt-pill:hover{background:#fff;color:#191919;border-color:#d6d4cf}
+.gt-pill:disabled{opacity:.4;cursor:default}
+.gt-dark{background:#191919;color:#fff;border-color:#191919}
+.gt-dark:hover{background:#2b2b2b;color:#fff;border-color:#2b2b2b}
+.gt-send{width:32px;height:32px;border-radius:999px;border:0;background:#191919;color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;flex:none;transition:opacity .18s ease}
+.gt-send:disabled{opacity:.22;cursor:default}
+.gt-ta{display:block;width:100%;border:0;outline:none;resize:none;background:transparent;font:inherit;font-size:15px;line-height:1.5;color:#191919;padding:0}
+.gt-ta::placeholder{color:#8b8b88}
+.gt-ghost{border:0;background:transparent;padding:5px 7px;border-radius:8px;cursor:pointer;font-size:13px;color:#5c5c5c;transition:background .18s ease,color .18s ease}
+.gt-ghost:hover{background:#efeeeb;color:#191919}
+.gt-icon{width:40px;height:40px;border:0;background:transparent;border-radius:10px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#5c5c5c;transition:background .18s ease,color .18s ease}
+.gt-icon:hover{background:rgba(0,0,0,.05);color:#191919}
+.gt-card{position:relative;background:#fff;border:1px solid #e7e6e3;border-radius:14px;padding:14px;box-shadow:0 1px 2px rgba(0,0,0,.03)}
+.gt-thumb{padding:0;border:0;border-radius:8px;overflow:hidden;cursor:pointer;display:block;width:100%;transition:transform .18s ease}
+.gt-thumb:hover{transform:translateY(-1px)}
+.gt-menu{position:absolute;top:44px;right:10px;z-index:2;background:#fff;border:1px solid #e7e6e3;border-radius:12px;padding:4px;min-width:170px;box-shadow:0 12px 32px rgba(0,0,0,.08)}
+.gt-menuitem{display:block;width:100%;text-align:left;border:0;background:transparent;padding:9px 10px;border-radius:8px;font-size:13px;cursor:pointer}
+.gt-menuitem:hover{background:#f4f4f2}
+.gt-frost{background:rgba(255,255,255,.82);backdrop-filter:blur(20px) saturate(1.2);-webkit-backdrop-filter:blur(20px) saturate(1.2);border:1px solid rgba(231,230,227,.9);box-shadow:0 1px 2px rgba(0,0,0,.04),0 12px 32px rgba(0,0,0,.08)}
+.gt-ring{position:absolute;padding:0;background:transparent;border-radius:50%;cursor:pointer;transition:opacity .7s ease,transform .25s ease}
+.gt-ring:hover{transform:scale(1.18)}
+.gt-pulse{animation:gtPulse 1.3s ease-out 2}
+@keyframes gtPulse{0%{box-shadow:0 0 0 0 rgba(255,255,255,.85)}100%{box-shadow:0 0 0 16px rgba(255,255,255,0)}}
+.gt-dots span{display:inline-block;width:5px;height:5px;border-radius:50%;background:#9a9a96;margin-right:4px;animation:gtDot 1.1s infinite ease-in-out}
+.gt-dots span:nth-child(2){animation-delay:.15s}
+.gt-dots span:nth-child(3){animation-delay:.3s}
+@keyframes gtDot{0%,80%,100%{opacity:.25;transform:translateY(0)}40%{opacity:1;transform:translateY(-2px)}}
+.gt-in{animation:gtIn .38s ease-out both}
+@keyframes gtIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.gt-tile{position:relative;border-radius:10px;overflow:hidden;background:#fff;transition:opacity .18s ease,border-color .18s ease}
+.gt-tilebtn{display:block;width:100%;padding:0;border:0;background:transparent;cursor:pointer;text-align:left}
+.gt-x{position:absolute;top:6px;right:6px;width:26px;height:26px;border-radius:999px;border:0;background:rgba(255,255,255,.92);cursor:pointer;opacity:0;transition:opacity .15s ease;display:flex;align-items:center;justify-content:center;color:#191919}
+.gt-tile:hover .gt-x,.gt-x:focus-visible{opacity:1}
+.gt-range{width:100%;accent-color:#191919;margin:0}
+.gt-check{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;font-size:13px;cursor:pointer}
+.gt-check:hover{background:#f4f4f2}
+.gt-check input{accent-color:#191919;width:15px;height:15px;margin:0}
+button:focus-visible,textarea:focus-visible,input:focus-visible{outline:2px solid #191919;outline-offset:2px}
+@media (max-width:760px){
+.gt-ws{flex-direction:column-reverse !important}
+.gt-panel{width:100% !important;height:56vh !important;border-right:0 !important;border-top:1px solid #e7e6e3}
+.gt-map{flex:none !important;height:44vh !important}
+.gt-sheet{left:12px !important;right:12px !important;width:auto !important;top:12px !important;bottom:12px !important}
+.gt-zoom{display:none !important}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none !important;animation:none !important}}
+</style>
+</helmet>
+
+<div style="position: relative; height: 100vh; min-height: 560px; width: 100%; overflow: hidden; background: #f4f4f2; font-family: Inter, system-ui, sans-serif; color: #191919">
+
+  <div class="gt-ws" style="position: absolute; inset: 0; display: flex">
+
+    <aside class="gt-panel" aria-label="Conversation" style="width: 400px; flex: none; height: 100%; background: #ffffff; border-right: 1px solid #e7e6e3; display: flex; flex-direction: column; z-index: 2; opacity: {{panelOp}}; transform: translateX({{panelX}}px); transition: opacity .5s ease .05s, transform .6s cubic-bezier(.2,.8,.2,1) .05s">
+      <div style="display: flex; align-items: center; justify-content: space-between; padding: 14px 14px 8px 22px">
+        <button class="gt-ghost" onClick="{{reset}}" style="font-size: 15px; font-weight: 500; color: #191919; margin-left: -7px">Groundtruth</button>
+        <button class="gt-icon" onClick="{{reset}}" aria-label="New search">
+          <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+
+      <div ref="{{msgsRef}}" style="flex: 1; overflow-y: auto; padding: 8px 22px 24px; display: flex; flex-direction: column; gap: 16px">
+        <sc-for list="{{msgs}}" as="m" hint-placeholder-count="0">
+          <sc-if value="{{m.isUser}}" hint-placeholder-val="{{false}}">
+            <div class="gt-in" style="display: flex; justify-content: flex-end">
+              <div style="max-width: 82%; background: #ecebe8; border-radius: 16px; padding: 9px 14px; font-size: 14px; line-height: 1.45; color: #191919">{{m.text}}</div>
+            </div>
+          </sc-if>
+          <sc-if value="{{m.isWorking}}" hint-placeholder-val="{{false}}">
+            <div class="gt-dots gt-in" role="status" aria-label="Working" style="padding: 6px 0"><span></span><span></span><span></span></div>
+          </sc-if>
+          <sc-if value="{{m.isAssistant}}" hint-placeholder-val="{{false}}">
+            <div class="gt-in" style="display: flex; flex-direction: column; gap: 10px">
+              <p style="margin: 0; font-size: 15px; line-height: 1.5; color: #191919">{{m.text}}</p>
+
+              <sc-if value="{{m.hasSteps}}" hint-placeholder-val="{{false}}">
+                <button class="gt-ghost" onClick="{{m.toggleSteps}}" aria-expanded="{{m.stepsOpen}}" style="align-self: flex-start; margin-left: -7px; display: flex; align-items: center; gap: 6px">Worked {{m.secs}} s · {{m.nSteps}} steps
+                  <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true" style="transform: rotate({{m.chevDeg}}deg); transition: transform .18s ease"><path d="M4.5 2.5 8 6l-3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </button>
+                <sc-if value="{{m.stepsOpen}}" hint-placeholder-val="{{false}}">
+                  <div class="gt-in" style="display: flex; flex-direction: column; gap: 7px; padding: 0 0 2px 0">
+                    <sc-for list="{{m.steps}}" as="s" hint-placeholder-count="3">
+                      <div style="display: flex; gap: 10px; font-size: 13px; line-height: 1.4">
+                        <span style="color: #191919; flex: none">{{s.label}}</span>
+                        <span style="color: #6b6b68; flex: 1; min-width: 0">{{s.detail}}</span>
+                        <span style="color: #6b6b68; font-variant-numeric: tabular-nums; flex: none">{{s.ms}}</span>
+                      </div>
+                    </sc-for>
+                  </div>
+                </sc-if>
+              </sc-if>
+
+              <sc-if value="{{m.isPick}}" hint-placeholder-val="{{false}}">
+                <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px">
+                  <sc-for list="{{m.tiles}}" as="t" hint-placeholder-count="6">
+                    <div class="gt-tile" style="border: {{t.border}}; opacity: {{t.op}}">
+                      <button class="gt-tilebtn" onClick="{{t.pick}}" aria-pressed="{{t.sel}}">
+                        <svg viewBox="0 0 120 84" width="100%" style="display: block" aria-hidden="true">
+                          <rect width="120" height="84" fill="{{t.bg}}"/>
+                          <circle cx="12" cy="10" r="13" fill="{{t.tree}}"/>
+                          <circle cx="106" cy="76" r="14" fill="{{t.tree}}"/>
+                          <circle cx="112" cy="8" r="9" fill="{{t.tree}}"/>
+                          <rect x="{{t.hx}}" y="{{t.hy}}" width="{{t.hw}}" height="{{t.hh}}" rx="1.5" fill="{{t.hf}}"/>
+                          <rect x="{{t.sx}}" y="{{t.sy}}" width="{{t.sw}}" height="{{t.sh}}" rx="{{t.sr}}" fill="{{t.sf}}" stroke="{{t.ss}}" stroke-width="1.5"/>
+                        </svg>
+                        <span style="display: block; padding: 6px 8px 8px; font-size: 12px; line-height: 1.3; color: #191919">{{t.label}}</span>
+                      </button>
+                      <button class="gt-x" onClick="{{t.not}}" aria-label="Not this">
+                        <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 2l6 6M8 2 2 8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+                      </button>
+                    </div>
+                  </sc-for>
+                </div>
+                <div style="display: flex; align-items: center; gap: 10px">
+                  <button class="gt-pill gt-dark" onClick="{{m.cont}}" disabled="{{m.contDisabled}}">Continue</button>
+                  <span style="font-size: 12px; color: #6b6b68">{{m.pickHint}}</span>
+                </div>
+              </sc-if>
+
+              <sc-if value="{{m.hasCard}}" hint-placeholder-val="{{false}}">
+                <div class="gt-card">
+                  <div style="display: flex; align-items: flex-start; gap: 8px">
+                    <div style="flex: 1; min-width: 0">
+                      <div style="font-size: 15px; font-weight: 500; line-height: 1.35">{{m.card.title}}</div>
+                      <div style="font-size: 13px; color: #6b6b68; margin-top: 3px; line-height: 1.4">{{m.card.sub}}</div>
+                    </div>
+                    <button class="gt-icon" onClick="{{m.toggleMenu}}" aria-label="More options" aria-expanded="{{m.menuOpen}}" style="margin: -8px -8px 0 0">
+                      <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="3.5" cy="8" r="1.2" fill="currentColor"/><circle cx="8" cy="8" r="1.2" fill="currentColor"/><circle cx="12.5" cy="8" r="1.2" fill="currentColor"/></svg>
+                    </button>
+                  </div>
+                  <sc-if value="{{m.menuOpen}}" hint-placeholder-val="{{false}}">
+                    <div class="gt-menu gt-in">
+                      <button class="gt-menuitem" onClick="{{m.toggleMenu}}">Export CSV</button>
+                      <button class="gt-menuitem" onClick="{{m.toggleMenu}}">Export GeoJSON</button>
+                      <button class="gt-menuitem" onClick="{{m.toggleMenu}}">Details: method, limits, sources</button>
+                    </div>
+                  </sc-if>
+                  <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin-top: 12px">
+                    <sc-for list="{{m.thumbs}}" as="t" hint-placeholder-count="4">
+                      <button class="gt-thumb" onClick="{{t.open}}" aria-label="Open this result">
+                        <svg viewBox="0 0 80 60" width="100%" style="display: block" aria-hidden="true">
+                          <rect width="80" height="60" fill="#7a9160"/>
+                          <circle cx="8" cy="8" r="10" fill="#45603a"/>
+                          <circle cx="22" cy="56" r="11" fill="#3d5731"/>
+                          <circle cx="50" cy="4" r="8" fill="#4e6b40"/>
+                          <rect x="4" y="17" width="54" height="30" rx="3" fill="#8ca36a"/>
+                          <rect x="60" y="0" width="20" height="60" fill="#2b5462" opacity="{{t.water}}"/>
+                          <rect x="10" y="23" width="20" height="16" rx="1" fill="{{t.roof}}"/>
+                          <rect x="37" y="27" width="14" height="8" rx="2.5" fill="#5fd3e6" stroke="#eef7f6" stroke-width="1"/>
+                          <rect x="60" y="30" width="16" height="2.5" fill="#d8c59c" opacity="{{t.dk}}"/>
+                        </svg>
+                      </button>
+                    </sc-for>
+                  </div>
+                  <button class="gt-ghost" onClick="{{m.view}}" style="margin: 10px 0 -4px -7px; color: #191919">View on map</button>
+                </div>
+              </sc-if>
+
+              <sc-if value="{{m.showPills}}" hint-placeholder-val="{{false}}">
+                <div style="display: flex; flex-wrap: wrap; gap: 6px">
+                  <sc-for list="{{m.pills}}" as="p" hint-placeholder-count="2">
+                    <button class="gt-pill" onClick="{{p.go}}">{{p.label}}</button>
+                  </sc-for>
+                </div>
+              </sc-if>
+            </div>
+          </sc-if>
+        </sc-for>
+      </div>
+
+      <div style="padding: 10px 16px 16px">
+        <div style="background: #ffffff; border: 1px solid #e7e6e3; border-radius: 16px; box-shadow: 0 1px 2px rgba(0,0,0,.04), 0 8px 24px rgba(0,0,0,.05); padding: 12px 10px 10px 14px; display: flex; align-items: flex-end; gap: 10px">
+          <label class="gt-sr" for="gt-ask-2">Ask a follow-up</label>
+          <textarea id="gt-ask-2" class="gt-ta" rows="1" placeholder="Ask a follow-up…" value="{{input}}" onChange="{{onInput}}" onKeyDown="{{onKey}}" style="min-height: 24px; max-height: 120px"></textarea>
+          <button class="gt-send" onClick="{{sendInput}}" disabled="{{sendDisabled}}" aria-label="Send">
+            <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M7 11.5v-9M3 6.5l4-4 4 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+        </div>
+        <div style="font-size: 12px; color: #6b6b68; margin-top: 8px; padding-left: 4px">NAIP 2022 · Mecklenburg County</div>
+      </div>
+    </aside>
+
+    <main class="gt-map" ref="{{mapRef}}" aria-label="Map" style="flex: 1; min-width: 0; position: relative; overflow: hidden; background: #6f8a55; opacity: {{mapOp}}; transition: opacity .7s ease .15s">
+
+      <div style="position: absolute; left: 0; top: 0; width: 1600px; height: 1000px; transform-origin: 0 0; transform: translate({{wt.x}}px, {{wt.y}}px) scale({{wt.s}}); transition: transform 1.6s cubic-bezier(.22,.8,.2,1)">
+        <div style="position: absolute; inset: 0; filter: {{imgFilter}}; transition: filter .6s ease">
+          <div style="position: absolute; left: -700px; top: -700px; width: 3000px; height: 2400px; background: #7b925e"></div>
+          <svg width="1600" height="1000" style="position: absolute; left: 0; top: 0; overflow: visible" aria-hidden="true">
+            <path d="{{world.lake}}" fill="#2b5462"/>
+            <path d="{{world.lake}}" fill="none" stroke="#86a08a" stroke-opacity=".5" stroke-width="18" stroke-linejoin="round"/>
+          </svg>
+          <sc-for list="{{world.trees}}" as="t" hint-placeholder-count="0">
+            <div style="position: absolute; left: {{t.l}}px; top: {{t.t}}px; width: {{t.d}}px; height: {{t.d}}px; border-radius: 50%; background: radial-gradient(circle at 38% 34%, {{t.a}}, {{t.b}} 72%)"></div>
+          </sc-for>
+          <svg width="1600" height="1000" style="position: absolute; left: 0; top: 0; overflow: visible" aria-hidden="true">
+            <path d="{{world.roads}}" fill="none" stroke="#cdc7ba" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          <sc-for list="{{houses}}" as="h" hint-placeholder-count="0">
+            <div style="position: absolute; left: {{h.lotL}}px; top: {{h.lotT}}px; width: {{h.lotW}}px; height: {{h.lotH}}px; border-radius: 6px; background: #8ca36a"></div>
+            <div style="position: absolute; left: {{h.hL}}px; top: {{h.hT}}px; width: {{h.hW}}px; height: {{h.hH}}px; transform: rotate({{h.rot}}deg); background: linear-gradient(180deg, {{h.ra}} 50%, {{h.rb}} 50%); border-radius: 1.5px; box-shadow: 2px 3px 0 rgba(20,30,15,.28)"></div>
+            <div style="position: absolute; left: {{h.pL}}px; top: {{h.pT}}px; width: 22px; height: 12px; border-radius: 3px; background: #5fd3e6; box-shadow: 0 0 0 1.5px #eef7f6, inset 0 0 0 1px rgba(0,70,90,.25); opacity: {{h.po}}"></div>
+            <div style="position: absolute; left: {{h.dL}}px; top: {{h.dT}}px; width: {{h.dW}}px; height: 3px; background: #d8c59c; opacity: {{h.dkMain}}; transition: opacity .5s ease"></div>
+            <div style="position: absolute; left: {{h.plL}}px; top: {{h.plT}}px; width: 10px; height: 12px; background: #d8c59c; opacity: {{h.dkMain}}; transition: opacity .5s ease"></div>
+          </sc-for>
+        </div>
+
+        <div style="position: absolute; left: -700px; top: -700px; width: 3000px; height: 2400px; background: #000; pointer-events: none; opacity: {{dimOp}}; transition: opacity .7s ease"></div>
+
+        <sc-for list="{{houses}}" as="h" hint-placeholder-count="0">
+          <div style="position: absolute; left: {{h.gL}}px; top: {{h.gT}}px; width: 28px; height: 28px; border-radius: 50%; background: {{accent}}; filter: blur(7px); opacity: {{h.glow}}; transition: opacity .7s ease; pointer-events: none"></div>
+          <div style="position: absolute; left: {{h.cdL}}px; top: {{h.cdT}}px; width: 10px; height: 10px; border-radius: 50%; background: {{accent}}; box-shadow: 0 0 0 2px rgba(255,255,255,.85); opacity: {{h.glow}}; transition: opacity .7s ease; pointer-events: none"></div>
+          <div style="position: absolute; left: {{h.cL}}px; top: {{h.cT}}px; width: {{h.cW}}px; height: 0; border-top: 1.5px dashed {{dock}}; opacity: {{h.conn}}; transition: opacity .7s ease; pointer-events: none"></div>
+          <div style="position: absolute; left: {{h.dL}}px; top: {{h.dhT}}px; width: {{h.dW}}px; height: 5px; border-radius: 3px; background: {{dock}}; box-shadow: 0 0 0 1.5px rgba(0,0,0,.28); opacity: {{h.dockHi}}; transition: opacity .7s ease; pointer-events: none"></div>
+          <button class="gt-ring {{h.pulse}}" onClick="{{h.open}}" aria-label="Open result {{h.n}}" tabindex="{{h.tab}}" style="left: {{h.rL}}px; top: {{h.rT}}px; width: 30px; height: 30px; border: {{h.ringW}}px solid {{h.ringColor}}; box-shadow: 0 0 0 2px rgba(0,0,0,.35); opacity: {{h.ring}}; pointer-events: {{h.pe}}"></button>
+        </sc-for>
+      </div>
+
+      <div class="gt-frost" style="position: absolute; top: 16px; left: 16px; border-radius: 999px; display: flex; align-items: center; padding: 3px; gap: 2px; z-index: 3">
+        <button class="gt-ghost" onClick="{{toggleYear}}" aria-label="Imagery year {{year}}" style="padding: 8px 12px; border-radius: 999px; color: #191919; display: flex; align-items: center; gap: 5px">{{year}}
+          <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5 5 6.5l3-3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <button class="gt-icon" onClick="{{toggleLayers}}" aria-label="Layers and options" aria-expanded="{{layersOpen}}" style="width: 36px; height: 36px; border-radius: 999px">
+          <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5 14 5.5 8 8.5 2 5.5z M2 8.5l6 3 6-3 M2 11l6 3 6-3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
+      <sc-if value="{{layersOpen}}" hint-placeholder-val="{{false}}">
+        <div class="gt-frost gt-in" style="position: absolute; top: 62px; left: 16px; border-radius: 14px; padding: 6px; width: 220px; z-index: 3">
+          <label class="gt-check"><input type="checkbox" checked="{{lyrFlood}}" onChange="{{tFlood}}">Flood zones</label>
+          <label class="gt-check"><input type="checkbox" checked="{{lyrRoads}}" onChange="{{tRoads}}">Highways</label>
+          <label class="gt-check"><input type="checkbox" checked="{{lyr3d}}" onChange="{{t3d}}">3D buildings</label>
+        </div>
+      </sc-if>
+
+      <div class="gt-frost" role="status" style="position: absolute; top: 16px; left: 50%; transform: translateX(-50%); border-radius: 999px; padding: 9px 16px; font-size: 13px; color: #191919; display: flex; align-items: center; gap: 8px; z-index: 3; opacity: {{busyOp}}; transition: opacity .3s ease; pointer-events: none">
+        <span class="gt-dots" aria-hidden="true"><span></span><span></span><span></span></span>Working
+      </div>
+
+      <div class="gt-frost" style="position: absolute; left: 16px; bottom: 16px; border-radius: 999px; padding: 8px 14px; display: flex; gap: 14px; font-size: 12px; color: #191919; z-index: 3; opacity: {{legendOp}}; transition: opacity .4s ease">
+        <span style="display: flex; align-items: center; gap: 7px"><span style="width: 9px; height: 9px; border-radius: 50%; background: {{accent}}; display: inline-block"></span>Pools</span>
+        <sc-if value="{{showDockLegend}}" hint-placeholder-val="{{false}}">
+          <span style="display: flex; align-items: center; gap: 7px"><span style="width: 14px; height: 4px; border-radius: 2px; background: {{dock}}; display: inline-block"></span>Docks</span>
+        </sc-if>
+      </div>
+
+      <div class="gt-frost gt-zoom" style="position: absolute; right: 16px; bottom: 16px; border-radius: 14px; display: flex; flex-direction: column; padding: 3px; z-index: 3">
+        <button class="gt-icon" onClick="{{zoomIn}}" aria-label="Zoom in">
+          <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M7 2.5v9M2.5 7h9" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        </button>
+        <div style="height: 1px; background: #e7e6e3; margin: 0 8px"></div>
+        <button class="gt-icon" onClick="{{zoomOut}}" aria-label="Zoom out">
+          <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M2.5 7h9" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+
+      <div class="gt-sheet gt-frost" onKeyDown="{{sheetKey}}" aria-hidden="{{sheet.hidden}}" style="position: absolute; top: 16px; right: 16px; bottom: 16px; width: 360px; border-radius: 20px; display: flex; flex-direction: column; overflow-y: auto; z-index: 4; padding: 16px; gap: 14px; opacity: {{sheet.op}}; transform: translateX({{sheet.x}}px); pointer-events: {{sheet.pe}}; transition: opacity .3s ease, transform .45s cubic-bezier(.2,.8,.2,1)">
+        <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 8px">
+          <div>
+            <div style="font-size: 15px; font-weight: 500">{{sheet.title}}</div>
+            <div style="font-size: 13px; color: #6b6b68; margin-top: 2px">{{sheet.sub}}</div>
+          </div>
+          <button class="gt-icon" onClick="{{closeSheet}}" aria-label="Close" tabindex="{{sheet.tab}}" style="margin: -8px -8px 0 0">
+            <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 2.5l7 7M9.5 2.5l-7 7" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          </button>
+        </div>
+
+        <div style="position: relative; width: 328px; max-width: 100%; height: 200px; border-radius: 12px; overflow: hidden; flex: none; background: #7b925e">
+          <div style="position: absolute; left: 0; top: 0; width: 1600px; height: 1000px; transform-origin: 0 0; transform: translate({{sheet.tx}}px, {{sheet.ty}}px) scale(3)">
+            <div style="position: absolute; left: -700px; top: -700px; width: 3000px; height: 2400px; background: #7b925e"></div>
+            <svg width="1600" height="1000" style="position: absolute; left: 0; top: 0; overflow: visible" aria-hidden="true">
+              <path d="{{world.lake}}" fill="#2b5462"/>
+              <path d="{{world.lake}}" fill="none" stroke="#86a08a" stroke-opacity=".5" stroke-width="18" stroke-linejoin="round"/>
+            </svg>
+            <sc-for list="{{sheet.trees}}" as="t" hint-placeholder-count="0">
+              <div style="position: absolute; left: {{t.l}}px; top: {{t.t}}px; width: {{t.d}}px; height: {{t.d}}px; border-radius: 50%; background: radial-gradient(circle at 38% 34%, {{t.a}}, {{t.b}} 72%)"></div>
+            </sc-for>
+            <sc-for list="{{sheet.houses}}" as="h" hint-placeholder-count="0">
+              <div style="position: absolute; left: {{h.lotL}}px; top: {{h.lotT}}px; width: {{h.lotW}}px; height: {{h.lotH}}px; border-radius: 6px; background: #8ca36a"></div>
+              <div style="position: absolute; left: {{h.hL}}px; top: {{h.hT}}px; width: {{h.hW}}px; height: {{h.hH}}px; transform: rotate({{h.rot}}deg); background: linear-gradient(180deg, {{h.ra}} 50%, {{h.rb}} 50%); border-radius: 1.5px; box-shadow: 2px 3px 0 rgba(20,30,15,.28)"></div>
+              <div style="position: absolute; left: {{h.pL}}px; top: {{h.pT}}px; width: 22px; height: 12px; border-radius: 3px; background: #5fd3e6; box-shadow: 0 0 0 1.5px #eef7f6, inset 0 0 0 1px rgba(0,70,90,.25); opacity: {{h.po}}"></div>
+              <div style="position: absolute; left: {{h.dL}}px; top: {{h.dT}}px; width: {{h.dW}}px; height: 3px; background: #d8c59c; opacity: {{h.d22}}"></div>
+              <div style="position: absolute; left: {{h.plL}}px; top: {{h.plT}}px; width: 10px; height: 12px; background: #d8c59c; opacity: {{h.d22}}"></div>
+            </sc-for>
+          </div>
+          <div style="position: absolute; inset: 0; clip-path: inset(0 {{sheet.clipR}}% 0 0); filter: saturate(.72) sepia(.16) brightness(.97)">
+            <div style="position: absolute; left: 0; top: 0; width: 1600px; height: 1000px; transform-origin: 0 0; transform: translate({{sheet.tx}}px, {{sheet.ty}}px) scale(3)">
+              <div style="position: absolute; left: -700px; top: -700px; width: 3000px; height: 2400px; background: #7b925e"></div>
+              <svg width="1600" height="1000" style="position: absolute; left: 0; top: 0; overflow: visible" aria-hidden="true">
+                <path d="{{world.lake}}" fill="#2b5462"/>
+                <path d="{{world.lake}}" fill="none" stroke="#86a08a" stroke-opacity=".5" stroke-width="18" stroke-linejoin="round"/>
+              </svg>
+              <sc-for list="{{sheet.trees}}" as="t" hint-placeholder-count="0">
+                <div style="position: absolute; left: {{t.l}}px; top: {{t.t}}px; width: {{t.d}}px; height: {{t.d}}px; border-radius: 50%; background: radial-gradient(circle at 38% 34%, {{t.a}}, {{t.b}} 72%)"></div>
+              </sc-for>
+              <sc-for list="{{sheet.houses}}" as="h" hint-placeholder-count="0">
+                <div style="position: absolute; left: {{h.lotL}}px; top: {{h.lotT}}px; width: {{h.lotW}}px; height: {{h.lotH}}px; border-radius: 6px; background: #8ca36a"></div>
+                <div style="position: absolute; left: {{h.hL}}px; top: {{h.hT}}px; width: {{h.hW}}px; height: {{h.hH}}px; transform: rotate({{h.rot}}deg); background: linear-gradient(180deg, {{h.ra}} 50%, {{h.rb}} 50%); border-radius: 1.5px; box-shadow: 2px 3px 0 rgba(20,30,15,.28)"></div>
+                <div style="position: absolute; left: {{h.pL}}px; top: {{h.pT}}px; width: 22px; height: 12px; border-radius: 3px; background: #5fd3e6; box-shadow: 0 0 0 1.5px #eef7f6, inset 0 0 0 1px rgba(0,70,90,.25); opacity: {{h.po}}"></div>
+                <div style="position: absolute; left: {{h.dL}}px; top: {{h.dT}}px; width: {{h.dW}}px; height: 3px; background: #d8c59c; opacity: {{h.d20}}"></div>
+                <div style="position: absolute; left: {{h.plL}}px; top: {{h.plT}}px; width: 10px; height: 12px; background: #d8c59c; opacity: {{h.d20}}"></div>
+              </sc-for>
+            </div>
+          </div>
+          <div style="position: absolute; top: 0; bottom: 0; left: {{sheet.swipe}}%; width: 2px; margin-left: -1px; background: #ffffff; box-shadow: 0 0 6px rgba(0,0,0,.35)"></div>
+          <span style="position: absolute; left: 10px; top: 10px; font-size: 11px; font-weight: 500; color: #191919; background: rgba(255,255,255,.88); border-radius: 999px; padding: 3px 8px">2020</span>
+          <span style="position: absolute; right: 10px; top: 10px; font-size: 11px; font-weight: 500; color: #191919; background: rgba(255,255,255,.88); border-radius: 999px; padding: 3px 8px">2022</span>
+        </div>
+        <label style="display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: #6b6b68">
+          Compare 2020 and 2022
+          <input class="gt-range" type="range" min="0" max="100" value="{{sheet.swipe}}" onChange="{{onSwipe}}" tabindex="{{sheet.tab}}">
+        </label>
+
+        <div style="display: flex; flex-direction: column; gap: 6px">
+          <sc-for list="{{sheet.facts}}" as="f" hint-placeholder-count="3">
+            <p style="margin: 0; font-size: 14px; line-height: 1.5; color: #191919">{{f.text}}</p>
+          </sc-for>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 8px; margin-top: auto">
+          <button class="gt-pill" onClick="{{fbYes}}" tabindex="{{sheet.tab}}" style="color: #191919">Looks right</button>
+          <button class="gt-pill" onClick="{{fbNo}}" tabindex="{{sheet.tab}}">Not this</button>
+          <span style="font-size: 12px; color: #6b6b68">{{sheet.fb}}</span>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <div style="position: absolute; inset: 0; z-index: 5; opacity: {{landOp}}; visibility: {{landVis}}; transition: opacity .55s ease, visibility .55s">
+    <div aria-hidden="true" style="position: absolute; inset: 0; overflow: hidden; background: #7b925e">
+      <div style="position: absolute; left: 50%; top: 50%; width: 1600px; height: 1000px; transform: translate(-50%, -50%) scale(1.35); filter: blur(16px) saturate(.6) brightness(1.15)">
+        <svg width="1600" height="1000" style="position: absolute; left: 0; top: 0; overflow: visible">
+          <path d="{{world.lake}}" fill="#2b5462"/>
+        </svg>
+        <sc-for list="{{world.trees}}" as="t" hint-placeholder-count="0">
+          <div style="position: absolute; left: {{t.l}}px; top: {{t.t}}px; width: {{t.d}}px; height: {{t.d}}px; border-radius: 50%; background: {{t.b}}"></div>
+        </sc-for>
+        <svg width="1600" height="1000" style="position: absolute; left: 0; top: 0; overflow: visible">
+          <path d="{{world.roads}}" fill="none" stroke="#cdc7ba" stroke-width="9" stroke-linecap="round"/>
+        </svg>
+        <sc-for list="{{world.houses}}" as="h" hint-placeholder-count="0">
+          <div style="position: absolute; left: {{h.lotL}}px; top: {{h.lotT}}px; width: {{h.lotW}}px; height: {{h.lotH}}px; border-radius: 6px; background: #8ca36a"></div>
+          <div style="position: absolute; left: {{h.hL}}px; top: {{h.hT}}px; width: {{h.hW}}px; height: {{h.hH}}px; background: {{h.ra}}"></div>
+          <div style="position: absolute; left: {{h.pL}}px; top: {{h.pT}}px; width: 22px; height: 12px; background: #5fd3e6; opacity: {{h.po}}"></div>
+        </sc-for>
+      </div>
+      <div style="position: absolute; inset: 0; background: rgba(244,244,242,.68)"></div>
+    </div>
+
+    <div style="position: relative; height: 100%; display: flex; flex-direction: column">
+      <div style="padding: 22px 28px; font-size: 15px; font-weight: 500">Groundtruth</div>
+      <div style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 0 16px 12vh; gap: 22px">
+        <h1 style="margin: 0; font-size: 30px; font-weight: 400; letter-spacing: -0.02em; line-height: 1.2; text-align: center">What do you want to find?</h1>
+        <div style="width: 100%; max-width: 640px; background: #ffffff; border: 1px solid #e7e6e3; border-radius: 20px; box-shadow: 0 1px 2px rgba(0,0,0,.04), 0 12px 32px rgba(0,0,0,.06); padding: 16px 12px 12px 18px">
+          <label class="gt-sr" for="gt-ask-1">What do you want to find?</label>
+          <textarea id="gt-ask-1" class="gt-ta" rows="2" placeholder="Houses with pools near Lake Norman…" value="{{input}}" onChange="{{onInput}}" onKeyDown="{{onKey}}"></textarea>
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 8px">
+            <span style="font-size: 12px; color: #6b6b68">Mecklenburg County · NAIP 2022</span>
+            <button class="gt-send" onClick="{{sendInput}}" disabled="{{sendDisabled}}" aria-label="Search">
+              <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M7 11.5v-9M3 6.5l4-4 4 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+          </div>
+        </div>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap; justify-content: center">
+          <button class="gt-pill" onClick="{{s1}}">Houses with pools</button>
+          <button class="gt-pill" onClick="{{s2}}">Swimming pools</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#EC3E8C","options":["#EC3E8C","#FF5A1F","#7C5CFF","#00B3A4"]},"dock":{"editor":"color","default":"#F5A524"},"$preview":{"width":1440,"height":900}}'>
+function gtRng(seed){return function(){seed|=0;seed=(seed+0x6D2B79F5)|0;var t=Math.imul(seed^(seed>>>15),1|seed);t=(t+Math.imul(t^(t>>>7),61|t))^t;return((t^(t>>>14))>>>0)/4294967296;};}
+function gtShore(y){return 1010+70*Math.sin(y/85)+34*Math.sin(y/31+1.3);}
+function gtWorld(){
+  var r=gtRng(11),i,y,x;
+  var lake='M '+gtShore(-60).toFixed(1)+' -60';
+  for(y=-50;y<=1060;y+=10){lake+=' L '+gtShore(y).toFixed(1)+' '+y;}
+  lake+=' L 2300 1060 L 2300 -60 Z';
+  var roads='M '+(gtShore(-60)-215).toFixed(1)+' -60';
+  for(y=-50;y<=1060;y+=10){roads+=' L '+(gtShore(y)-215).toFixed(1)+' '+y;}
+  var streets=[150,330,510,690,870];
+  streets.forEach(function(sy){roads+=' M -700 '+sy+' L '+(gtShore(sy)-215).toFixed(1)+' '+sy;});
+  roads+=' M 430 -700 L 430 1700';
+  var lights=['#56744a','#5f7d50','#4f6c43','#6a8857'],darks=['#3b5530','#44603a','#355029','#4e6b40'];
+  var trees=[];
+  for(i=0;i<380;i++){y=r()*1100-50;x=r()*(gtShore(y)+120)-160;if(x>gtShore(y)-34)continue;var d=14+r()*30,k=Math.floor(r()*4);
+    trees.push({x:x,y:y,l:(x-d/2).toFixed(1),t:(y-d/2).toFixed(1),d:d.toFixed(1),a:lights[k],b:darks[k]});}
+  var roofs=[['#c9c1b3','#b3aa9b'],['#9a9184','#857c70'],['#b5a48e','#a08f79'],['#d4d0c8','#bdb8ae'],['#8d7b6c','#7a6a5c']];
+  var houses=[],n=0;
+  function mk(hx,hy,lake,poolP){
+    var rf=roofs[Math.floor(r()*roofs.length)],w=30+r()*10,h=22+r()*6;
+    var o={id:n,n:n+1,x:hx,y:hy,lake:lake,lotL:(hx-38).toFixed(1),lotT:(hy-30).toFixed(1),lotW:76,lotH:60,
+      hL:(hx-w/2).toFixed(1),hT:(hy-h/2).toFixed(1),hW:w.toFixed(1),hH:h.toFixed(1),rot:(r()*10-5).toFixed(1),ra:rf[0],rb:rf[1],
+      pool:r()<poolP,dock:false,newDock:false,match:false,pcx:0,pcy:0,pL:0,pT:0,dL:0,dT:0,dW:0,plL:0,plT:0,cL:0,cW:0,
+      poolM2:24+Math.floor(r()*30),shoreM:0,dockM:0};
+    n++;return o;}
+  for(y=60;y<=950;y+=50){
+    var sx=gtShore(y),h=mk(sx-125,y,true,0.8);
+    h.dock=r()<0.85;h.lotW=150;
+    h.pcx=sx-71;h.pcy=y;h.pL=(sx-82).toFixed(1);h.pT=(y-6).toFixed(1);
+    var dw=36+r()*18;h.dW=h.dock?dw.toFixed(1):0;h.dL=(sx-2).toFixed(1);h.dT=(y-1.5).toFixed(1);
+    h.plL=(sx-6+dw).toFixed(1);h.plT=(y-6).toFixed(1);
+    h.cL=(sx-60).toFixed(1);h.cW=(58).toFixed(1);
+    h.shoreM=Math.round(125*0.6);h.dockM=Math.round(dw*0.6);
+    houses.push(h);}
+  var cols=[90,185,280,535,630,725];
+  for(y=55;y<=960;y+=68){for(var c=0;c<cols.length;c++){
+    x=cols[c]+r()*16-8;var yy=y+r()*10-5;
+    if(x>gtShore(yy)-300)continue;
+    if(streets.some(function(s){return Math.abs(s-yy)<26;}))continue;
+    var hh=mk(x,yy,false,0.45),left=(c%3===2);
+    var px=left?x-56:x+34;hh.pcx=px+11;hh.pcy=yy;hh.pL=px.toFixed(1);hh.pT=(yy-6).toFixed(1);
+    houses.push(hh);}}
+  var m=0;
+  houses.forEach(function(h){h.match=!!(h.lake&&h.pool&&h.dock);if(h.match){if(m%3===1)h.newDock=true;m++;}
+    h.po=h.pool?1:0;h.d22=h.dock?1:0;h.d20=(h.dock&&!h.newDock)?1:0;});
+  return {lake:lake,roads:roads,trees:trees,houses:houses};
+}
+var GT_REPLIES={
+  1:{text:'Backyard pools next to houses, across the county. Where should I look?',steps:[['Read the request','houses + pools → pools at homes',120],['Scored every tile','107,770 tiles',52],['Matched pools to buildings','',88]],pills:['in Lake Norman','in Ballantyne','in Myers Park']},
+  2:{text:'Here are the houses with a pool around Lake Norman.',card:{title:'1,188 houses with a pool',sub:'Lake Norman · NAIP 2022'},steps:[['Flew to Lake Norman','',0],['Found every pool in the area','dense scan',47],['Checked each one','size, colour, ground level',61],['Matched pools to houses','',38]],pills:['with lake and dock access','only the biggest pools']},
+  3:{text:'214 of them sit on the lake and have their own dock.',card:{title:'214 lakefront houses with a pool and a dock',sub:'within 100 m of the shore · dock in front of the house'},steps:[['Traced the shoreline','',22],['Kept lakefront houses','within 100 m, no road between',31],['Matched docks to houses','one dock per house',44]],pills:['which got docks since 2020']},
+  4:{text:'31 of those docks weren’t there in 2020.',card:{title:'31 docks added since 2020',sub:'compared with NAIP 2020'},steps:[['Loaded 2020 imagery','',140],['Compared each dock','2020 vs 2022',96]],pills:[]}
+};
+var GT_TILES=[
+  {id:'backyard',label:'Backyard pool',bg:'#7a9160',tree:'#45603a',hx:16,hy:26,hw:40,hh:28,hf:'#bdb4a6',sx:66,sy:33,sw:22,sh:12,sr:4,sf:'#5fd3e6',ss:'#eef7f6'},
+  {id:'community',label:'Community pool',bg:'#b4afa4',tree:'#4a6638',hx:8,hy:8,hw:52,hh:20,hf:'#9d968a',sx:38,sy:36,sw:54,sh:30,sr:2,sf:'#59cde2',ss:'#f2f2ee'},
+  {id:'pond',label:'Stormwater pond',bg:'#7d9460',tree:'#46623a',hx:0,hy:0,hw:0,hh:0,hf:'#7d9460',sx:26,sy:20,sw:66,sh:44,sr:22,sf:'#66733f',ss:'#80905a'},
+  {id:'tarp',label:'Blue tarp',bg:'#728b58',tree:'#45603a',hx:24,hy:18,hw:66,hh:48,hf:'#bdb4a6',sx:40,sy:28,sw:30,sh:20,sr:1,sf:'#2f6fd6',ss:'#2a5fb8'},
+  {id:'lake',label:'Lake or pond',bg:'#2b5462',tree:'#46623a',hx:0,hy:0,hw:22,hh:84,hf:'#7a9160',sx:0,sy:0,sw:0,sh:0,sr:0,sf:'#2b5462',ss:'#2b5462'},
+  {id:'other',label:'Something else',bg:'#7a9160',tree:'#45603a',hx:0,hy:0,hw:0,hh:0,hf:'#7a9160',sx:24,sy:18,sw:72,sh:48,sr:2,sf:'#3e8a78',ss:'#f4f4f2'}
+];
+var gtUid=0;
+class Component extends DCLogic {
+  constructor(props){
+    super(props);
+    this.world=gtWorld();
+    this.state={stage:'landing',step:0,input:'',msgs:[],busy:false,sel:null,swipe:55,open:{},menu:null,picked:{},nots:{},pickDone:false,year:'2022',layersOpen:false,lyrFlood:false,lyrRoads:true,lyr3d:false,zoomAdj:1,vw:1040,vh:900,fb:{}};
+    var self=this;
+    this.ro=(typeof ResizeObserver!=='undefined')?new ResizeObserver(function(es){var cr=es[0].contentRect;if(Math.abs(cr.width-self.state.vw)>1||Math.abs(cr.height-self.state.vh)>1){self.setState({vw:cr.width,vh:cr.height});}}):null;
+    this.mapRef=function(el){if(el&&el!==self.mapEl){if(self.mapEl&&self.ro)self.ro.unobserve(self.mapEl);self.mapEl=el;if(self.ro)self.ro.observe(el);}};
+    this.msgsRef=function(el){self.msgsEl=el;};
+  }
+  componentDidUpdate(pp,ps){if(this.msgsEl&&ps.msgs!==this.state.msgs){this.msgsEl.scrollTop=this.msgsEl.scrollHeight;}}
+  componentWillUnmount(){if(this.ro)this.ro.disconnect();clearTimeout(this.timer);}
+  send(raw){
+    var text=(raw||'').trim(),st=this.state;if(!text||st.busy)return;
+    var first=st.stage==='landing',next;
+    if(first&&!/house|home/i.test(text))next='pick';
+    else if(!st.pickDone&&st.msgs.some(function(m){return m.kind==='pick';}))next=1;
+    else next=st.step+1;
+    this.setState({stage:'work',input:'',busy:true,sel:null,menu:null,layersOpen:false,zoomAdj:1,
+      msgs:st.msgs.concat([{id:'u'+(++gtUid),role:'user',text:text},{id:'working',role:'working'}])});
+    var self=this;clearTimeout(this.timer);
+    this.timer=setTimeout(function(){self.reply(next);},first?1150:850);
+  }
+  reply(next){
+    var msg;
+    if(next==='pick'){msg={id:'a'+(++gtUid),role:'assistant',kind:'pick',text:'“Pools” can mean a few things from above. Which do you mean?',steps:[['Read the request','',90],['Found six kinds of blue','across the county',410]]};}
+    else if(next>4){msg={id:'a'+(++gtUid),role:'assistant',text:'That’s the end of this walkthrough. Start a new search from the top left.',steps:[]};}
+    else{var R=GT_REPLIES[next];msg={id:'a'+(++gtUid),role:'assistant',step:next,text:R.text,card:R.card||null,steps:R.steps,pills:R.pills};}
+    this.setState(function(s){return {busy:false,msgs:s.msgs.filter(function(m){return m.role!=='working';}).concat([msg]),step:(typeof next==='number'&&next<=4)?next:s.step};});
+  }
+  continuePick(){
+    var R=GT_REPLIES[1],self=this;
+    this.setState(function(s){return {pickDone:true,busy:true,msgs:s.msgs.concat([{id:'working',role:'working'}])};});
+    clearTimeout(this.timer);
+    this.timer=setTimeout(function(){
+      var msg={id:'a'+(++gtUid),role:'assistant',step:1,text:'Got it: backyard pools next to houses. Where should I look?',steps:R.steps,pills:R.pills};
+      self.setState(function(s){return {busy:false,step:1,msgs:s.msgs.filter(function(m){return m.role!=='working';}).concat([msg])};});
+    },800);
+  }
+  reset(){clearTimeout(this.timer);this.setState({stage:'landing',step:0,input:'',msgs:[],busy:false,sel:null,open:{},menu:null,picked:{},nots:{},pickDone:false,year:'2022',layersOpen:false,zoomAdj:1,fb:{}});}
+  cam(step,z){
+    var s=1,tx=0,ty=0;
+    if(step>=2){s=2.3;var cx=gtShore(520)-95,cy=520;tx=800-s*cx;ty=500-s*cy;}
+    return {s:s*z,tx:800+z*(tx-800),ty:500+z*(ty-500)};
+  }
+  thumbsFor(step,self){
+    var hs=this.world.houses,list;
+    if(step===4)list=hs.filter(function(h){return h.newDock;});
+    else if(step===3)list=hs.filter(function(h){return h.match;});
+    else list=hs.filter(function(h){return h.lake&&h.pool;});
+    if(list.length<4)list=list.concat(hs.filter(function(h){return h.pool;})).slice(0,4);
+    return list.slice(0,4).map(function(h){return {roof:h.ra,water:h.lake?1:0,dk:h.dock?1:0,open:function(){self.setState({sel:h.id,swipe:55,menu:null});}};});
+  }
+  renderVals(){
+    var st=this.state,self=this,accent=this.props.accent||'#EC3E8C',dock=this.props.dock||'#F5A524';
+    var step=st.step,landing=st.stage==='landing';
+    var c=this.cam(step,st.zoomAdj),vw=st.vw||1040,vh=st.vh||900;
+    var fit=Math.max(vw/1600,vh/1000),fx=(vw-1600*fit)/2,fy=(vh-1000*fit)/2;
+    var wt={x:(fx+fit*c.tx).toFixed(2),y:(fy+fit*c.ty).toFixed(2),s:(fit*c.s).toFixed(4)};
+    var houses=this.world.houses.map(function(h){
+      var glow=0,ring=0,dh=0,pulse='';
+      if(h.pool){
+        if(step===1)glow=1;
+        else if(step===2)ring=1;
+        else if(step===3){ring=h.match?1:0.16;dh=h.match?1:0;if(h.match)pulse='gt-pulse';}
+        else if(step===4){ring=h.newDock?1:(h.match?0.28:0.08);dh=h.newDock?1:(h.match?0.25:0);if(h.newDock)pulse='gt-pulse';}
+      }
+      var isSel=st.sel===h.id,live=ring>0.5;
+      return Object.assign({},h,{glow:glow,ring:ring,dockHi:dh,conn:dh*0.85,pulse:pulse,
+        dkMain:(h.dock&&!(st.year==='2020'&&h.newDock))?1:0,
+        gL:(h.pcx-14).toFixed(1),gT:(h.pcy-14).toFixed(1),cdL:(h.pcx-5).toFixed(1),cdT:(h.pcy-5).toFixed(1),
+        rL:(h.pcx-15).toFixed(1),rT:(h.pcy-15).toFixed(1),cT:h.pcy.toFixed(1),dhT:(h.pcy-2.5).toFixed(1),
+        ringColor:isSel?'#ffffff':accent,ringW:isSel?3.5:2.5,pe:live?'auto':'none',tab:live?0:-1,
+        open:function(){self.setState({sel:h.id,swipe:55,menu:null});}});
+    });
+    var lastA=-1;st.msgs.forEach(function(m,i){if(m.role==='assistant')lastA=i;});
+    var noop=function(){};
+    var msgs=st.msgs.map(function(m,i){
+      var d={isUser:false,isAssistant:false,isWorking:false,text:'',hasSteps:false,steps:[],nSteps:0,secs:'0.0',stepsOpen:false,chevDeg:0,toggleSteps:noop,isPick:false,tiles:[],cont:noop,contDisabled:true,pickHint:'',hasCard:false,card:{title:'',sub:''},thumbs:[],menuOpen:false,toggleMenu:noop,view:noop,showPills:false,pills:[]};
+      if(m.role==='user')return Object.assign(d,{isUser:true,text:m.text});
+      if(m.role==='working')return Object.assign(d,{isWorking:true});
+      var steps=(m.steps||[]).map(function(s){return {label:s[0],detail:s[1],ms:s[2]?s[2]+' ms':''};});
+      var total=(m.steps||[]).reduce(function(a,s){return a+s[2];},0),open=!!st.open[m.id];
+      var isPick=m.kind==='pick'&&!st.pickDone;
+      var nPicked=Object.keys(st.picked).filter(function(k){return st.picked[k];}).length;
+      var tiles=isPick?GT_TILES.map(function(t){var sel=!!st.picked[t.id],no=!!st.nots[t.id];
+        return Object.assign({},t,{sel:sel,border:sel?'2px solid #191919':'1px solid #e7e6e3',op:no?0.35:1,
+          pick:function(){self.setState(function(s){var p=Object.assign({},s.picked);p[t.id]=!p[t.id];var nn=Object.assign({},s.nots);nn[t.id]=false;return {picked:p,nots:nn};});},
+          not:function(){self.setState(function(s){var nn=Object.assign({},s.nots);nn[t.id]=!nn[t.id];var p=Object.assign({},s.picked);p[t.id]=false;return {nots:nn,picked:p};});}});}):[];
+      var pills=(m.pills||[]).map(function(p){return {label:p,go:function(){self.send(p);}};});
+      return Object.assign(d,{isAssistant:true,text:m.text,hasSteps:steps.length>0,steps:steps,nSteps:steps.length,
+        secs:Math.max(0.1,total/1000).toFixed(1),stepsOpen:open,chevDeg:open?90:0,
+        toggleSteps:function(){self.setState(function(s){var o=Object.assign({},s.open);o[m.id]=!o[m.id];return {open:o};});},
+        isPick:isPick,tiles:tiles,cont:function(){self.continuePick();},contDisabled:nPicked===0||st.busy,
+        pickHint:nPicked===0?'Pick at least one':(nPicked===1?'1 picked':nPicked+' picked'),
+        hasCard:!!m.card,card:m.card||{title:'',sub:''},thumbs:m.card?self.thumbsFor(m.step,self):[],
+        menuOpen:st.menu===m.id,toggleMenu:function(){self.setState(function(s){return {menu:s.menu===m.id?null:m.id};});},
+        view:function(){self.setState({sel:null,step:m.step,zoomAdj:1,menu:null});},
+        showPills:i===lastA&&pills.length>0&&!st.busy,pills:pills});
+    });
+    var selH=null;for(var k=0;k<this.world.houses.length;k++){if(this.world.houses[k].id===st.sel)selH=this.world.houses[k];}
+    var sh=selH||this.world.houses[0];
+    var cx=sh.lake?sh.pcx+12:sh.pcx-14,cy=sh.pcy;
+    var near=function(o){return Math.abs(o.x-cx)<150&&Math.abs(o.y-cy)<110;};
+    var facts=[{text:'A pool of about '+sh.poolM2+' m² behind the house.'}];
+    if(sh.lake)facts.push({text:'About '+sh.shoreM+' m from the Lake Norman shoreline.'});
+    else facts.push({text:'Not on the water.'});
+    if(sh.dock)facts.push({text:'Its own dock, about '+sh.dockM+' m long'+(sh.newDock?', new since 2020.':'.')});
+    else if(sh.lake)facts.push({text:'No dock.'});
+    var fbv=st.fb[sh.id];
+    var sheet={hidden:selH?false:true,op:selH?1:0,x:selH?0:24,pe:selH?'auto':'none',tab:selH?0:-1,
+      title:sh.lake?'Lakefront house':'House with a pool',sub:'Result '+sh.n+' · NAIP 2022',
+      tx:(164-3*cx).toFixed(1),ty:(100-3*cy).toFixed(1),swipe:st.swipe,clipR:100-st.swipe,
+      trees:this.world.trees.filter(near),houses:this.world.houses.filter(near),facts:facts,
+      fb:fbv==='yes'?'Thanks. I’ll find more like this.':(fbv==='no'?'Removed. I’ll show fewer like this.':'')};
+    var setFb=function(v){self.setState(function(s){var f=Object.assign({},s.fb);if(s.sel!==null)f[s.sel]=v;return {fb:f};});};
+    return {
+      world:this.world,houses:houses,msgs:msgs,input:st.input,accent:accent,dock:dock,wt:wt,
+      sendDisabled:st.busy||!st.input.trim(),
+      panelOp:landing?0:1,panelX:landing?-24:0,mapOp:landing?0:1,landOp:landing?1:0,landVis:landing?'visible':'hidden',
+      dimOp:step>=1?0.22:0,imgFilter:st.year==='2020'?'saturate(.78) sepia(.14) brightness(.98)':'none',
+      busyOp:st.busy&&!landing?1:0,legendOp:step>=1?1:0,showDockLegend:step>=3,
+      year:st.year,layersOpen:st.layersOpen,lyrFlood:st.lyrFlood,lyrRoads:st.lyrRoads,lyr3d:st.lyr3d,
+      sheet:sheet,mapRef:this.mapRef,msgsRef:this.msgsRef,
+      onInput:function(e){self.setState({input:e.target.value});},
+      onKey:function(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();self.send(self.state.input);}},
+      sendInput:function(){self.send(self.state.input);},
+      s1:function(){self.send('Houses with pools');},s2:function(){self.send('Swimming pools');},
+      reset:function(){self.reset();},
+      toggleYear:function(){self.setState(function(s){return {year:s.year==='2022'?'2020':'2022'};});},
+      toggleLayers:function(){self.setState(function(s){return {layersOpen:!s.layersOpen};});},
+      tFlood:function(){self.setState(function(s){return {lyrFlood:!s.lyrFlood};});},
+      tRoads:function(){self.setState(function(s){return {lyrRoads:!s.lyrRoads};});},
+      t3d:function(){self.setState(function(s){return {lyr3d:!s.lyr3d};});},
+      zoomIn:function(){self.setState(function(s){return {zoomAdj:Math.min(4,s.zoomAdj*1.4)};});},
+      zoomOut:function(){self.setState(function(s){return {zoomAdj:Math.max(0.5,s.zoomAdj/1.4)};});},
+      closeSheet:function(){self.setState({sel:null});},
+      sheetKey:function(e){if(e.key==='Escape')self.setState({sel:null});},
+      onSwipe:function(e){self.setState({swipe:Number(e.target.value)});},
+      fbYes:function(){setFb('yes');},fbNo:function(){setFb('no');}
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,25 @@
+/* Groundtruth v2 design tokens (docs/design/target: DESIGN_TARGET.md + Main.dc.html). Light only. Inter 400/500. */
+:root {
+  --canvas: #f4f4f2;
+  --surface: #ffffff;
+  --ink: #191919;
+  --muted: #5c5c5c;
+  --muted-body: #6b6b68;
+  --placeholder: #8b8b88;
+  --hairline: #e7e6e3;
+  --hairline-strong: #d6d4cf;
+  --hover: #efeeeb;
+  --user-bubble: #ecebe8;
+  --accent: #ec3e8c;   /* results */
+  --dock: #f5a524;     /* docks */
+  --frost: rgba(255, 255, 255, .82);
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, .03);
+  --shadow-float: 0 1px 2px rgba(0, 0, 0, .04), 0 12px 32px rgba(0, 0, 0, .06);
+  --shadow-frost: 0 1px 2px rgba(0, 0, 0, .04), 0 12px 32px rgba(0, 0, 0, .08);
+  --shadow-composer: 0 1px 2px rgba(0, 0, 0, .04), 0 8px 24px rgba(0, 0, 0, .05);
+  --r-8: 8px; --r-10: 10px; --r-12: 12px; --r-14: 14px; --r-16: 16px; --r-20: 20px; --r-pill: 999px;
+  --ui: .18s ease;
+  --ease-panel: cubic-bezier(.2, .8, .2, 1);
+  --ease-camera: cubic-bezier(.22, .8, .2, 1);
+  --font: Inter, system-ui, sans-serif;
+}

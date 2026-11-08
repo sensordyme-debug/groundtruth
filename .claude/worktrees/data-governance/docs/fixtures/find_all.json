@@ -1,0 +1,290 @@
+{
+ "request": {
+  "method": "POST",
+  "path": "/api/v1/tools/find_all",
+  "body": {
+   "aoi": "south_charlotte",
+   "year": 2022,
+   "examples": [
+    "2022_e4477_n33683#15"
+   ],
+   "exclude": [
+    "2022_e4482_n33672#26"
+   ],
+   "concept": "swimming_pool",
+   "bbox": [
+    -80.835,
+    35.05,
+    -80.815,
+    35.066
+   ],
+   "outline_top": 50
+  }
+ },
+ "response": {
+  "tool": "find_all",
+  "version": "0.2.0",
+  "status": "partial",
+  "result": {
+   "geojson": {
+    "type": "FeatureCollection",
+    "features": [
+     {
+      "type": "Feature",
+      "id": "2022_e4477_n33683#15:47",
+      "geometry": {
+       "type": "Polygon",
+       "coordinates": [
+        [
+         [
+          -80.8257828,
+          35.0661323
+         ],
+         [
+          -80.8257828,
+          35.0662082
+         ],
+         [
+          -80.8258751,
+          35.0662082
+         ],
+         [
+          -80.8258751,
+          35.0661323
+         ],
+         [
+          -80.8257828,
+          35.0661323
+         ]
+        ]
+       ]
+      },
+      "properties": {
+       "chip_id": "2022_e4477_n33683",
+       "year": 2022,
+       "scene_id": "nc_m_3508058_nw_17_060_20220602",
+       "thumb_url": "/api/v1/chips/2022_e4477_n33683.jpg?aoi=south_charlotte",
+       "chip_bbox": [
+        -80.82725906841438,
+        35.065147610353364,
+        -80.82578248095002,
+        35.066361643947396
+       ],
+       "cell": 15,
+       "cell_bbox": [
+        -80.8259674,
+        35.0660566,
+        -80.8257828,
+        35.0662083
+       ],
+       "score": 0.6877,
+       "rank": 1,
+       "example": "2022_e4477_n33683#15:47",
+       "patch": 47,
+       "patch_sim": 0.874,
+       "colour": 0.408,
+       "n_patches": 1,
+       "geometry_kind": "box",
+       "area_m2": null,
+       "area_acres": null,
+       "object_check": null,
+       "confidence": 0.85
+      }
+     },
+     {
+      "type": "Feature",
+      "id": "2022_e4477_n33672#14:61",
+      "geometry": {
+       "type": "Polygon",
+       "coordinates": [
+        [
+         [
+          -80.8259915,
+          35.0546301
+         ],
+         [
+          -80.8259915,
+          35.054706
+         ],
+         [
+          -80.8260837,
+          35.054706
+         ],
+         [
+          -80.8260837,
+          35.0546301
+         ],
+         [
+          -80.8259915,
+          35.0546301
+         ]
+        ]
+       ]
+      },
+      "properties": {
+       "chip_id": "2022_e4477_n33672",
+       "year": 2022,
+       "scene_id": "nc_m_3508058_sw_17_060_20220602",
+       "thumb_url": "/api/v1/chips/2022_e4477_n33672.jpg?aoi=south_charlotte",
+       "chip_bbox": [
+        -80.82728313389417,
+        35.05372087337452,
+        -80.82580675322892,
+        35.054934908368914
+       ],
+       "cell": 14,
+       "cell_bbox": [
+        -80.8261759,
+        35.0546301,
+        -80.8259913,
+        35.0547818
+       ],
+       "score": 0.6578,
+       "rank": 2,
+       "example": "2022_e4477_n33672#14:61",
+       "patch": 61,
+       "patch_sim": 0.6338,
+       "colour": 0.694,
+       "n_patches": 2,
+       "geometry_kind": "box",
+       "area_m2": null,
+       "area_acres": null,
+       "object_check": null,
+       "confidence": 0.85
+      }
+     },
+     {
+      "type": "Feature",
+      "id": "2022_e4477_n33675#31:127",
+      "geometry": {
+       "type": "Polygon",
+       "coordinates": [
+        [
+         [
+          -80.8258013,
+          35.0574432
+         ],
+         [
+          -80.8258013,
+          35.0575191
+         ],
+         [
+          -80.8258935,
+          35.0575191
+         ],
+         [
+          -80.8258935,
+          35.0574432
+         ],
+         [
+          -80.8258013,
+          35.0574432
+         ]
+        ]
+       ]
+      },
+      "properties": {
+       "chip_id": "2022_e4477_n33675",
+       "year": 2022,
+       "scene_id": "nc_m_3508058_sw_17_060_20220602",
+       "thumb_url": "/api/v1/chips/2022_e4477_n33675.jpg?aoi=south_charlotte",
+       "chip_bbox": [
+        -80.82727657192476,
+        35.05683725832728,
+        -80.82580013487129,
+        35.058051292939766
+       ],
+       "cell": 31,
+       "cell_bbox": [
+        -80.8259857,
+        35.0574432,
+        -80.8258011,
+        35.057595
+       ],
+       "score": 0.6117,
+       "rank": 3,
+       "example": "2022_e4477_n33675#31:127",
+       "patch": 127,
+       "patch_sim": 0.625,
+       "colour": 0.592,
+       "n_patches": 2,
+       "geometry_kind": "box",
+       "area_m2": null,
+       "area_acres": null,
+       "object_check": null,
+       "confidence": 0.85
+      }
+     }
+    ]
+   },
+   "metrics": {
+    "count_detected": 79,
+    "outlined": 7,
+    "pending_outline": 72,
+    "rejected_by_object_check": 6,
+    "outlines_queued": 42,
+    "area_m2_total": 295.9,
+    "area_acres_total": 0.073,
+    "median_area_m2": 43.9,
+    "bbox": [
+     -80.835,
+     35.05,
+     -80.815,
+     35.066
+    ],
+    "place": null,
+    "concept": "swimming_pool",
+    "count_unit": "deduped objects not rejected by the object check (same unit as features)",
+    "mode": "exhaustive_scan",
+    "chips_in_box": 272,
+    "cells_scanned": 17408,
+    "ms_cells": 9,
+    "ms_colour": 418,
+    "chips_prefiltered": 233,
+    "ms_patches": 1290,
+    "raw_detections": 115,
+    "objects": 85,
+    "ms_total": 1718,
+    "device": "cuda"
+   }
+  },
+  "confidence": 0.808,
+  "method": "Exhaustive scan: DINOv2 8\u00d78 cells for every chip in the box \u2192 prefilter (cell similarity or concept colour) \u2192 full-res DINOv2 patches + concept colour \u2192 connected patch groups = objects \u2192 closer to positives than to the 'not this' negatives \u2192 dedupe by distance \u2192 SAM 2.1 outline (patch-prompted, lazy) \u2192 object check (area, compactness, colour)",
+  "assumptions": [
+   "The picked examples show the intended object; the unpicked senses are negatives"
+  ],
+  "limits": [
+   "NAIP 2022 at 0.6 m/px: objects smaller than ~3 m are not resolvable",
+   "Scores are embedding similarities, not calibrated probabilities",
+   "Hits are 16.8 m cells of 134 m chips until outlined (`outline` / find_all's background outlines)",
+   "Only the 'south_charlotte' area is indexed, not the whole county",
+   "Exhaustive within the box: all 272 chips / 17408 cells scored; objects below the concept threshold (conf/concepts.json) are not counted",
+   "count = deduped objects (merged within the concept's nms_m) that did not fail the object check; objects not yet outlined are counted on their image evidence and may still be rejected once outlined",
+   "Confidence is a heuristic (margin over the threshold \u00d7 outline quality \u00d7 object check), not a probability"
+  ],
+  "sources": [
+   {
+    "name": "USDA NAIP 2022",
+    "url": "https://planetarycomputer.microsoft.com/dataset/naip",
+    "date": "2022-06-02/2022-09-27",
+    "licence": "Public domain (USDA FSA NAIP); hosted by Microsoft Planetary Computer (PC Terms of Use)"
+   }
+  ],
+  "steps": [
+   {
+    "phase": "scan",
+    "detail": "every chip + cell in the box (272 chips, 17408 cells) \u2192 233 chips at full resolution (cuda) \u2192 115 raw \u2192 85 objects after dedupe",
+    "ms": 1717.89
+   },
+   {
+    "phase": "objects",
+    "detail": "outline/object check; queue top 50 for SAM 2",
+    "ms": 530.87
+   }
+  ],
+  "declined_reason": null,
+  "_fixture": {
+   "truncated_features": 76
+  }
+ }
+}
