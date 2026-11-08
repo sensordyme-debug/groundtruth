@@ -87,6 +87,8 @@ export default function App() {
   const [attrOpen, setAttrOpen] = useState(false);
   const [srcs, setSrcs] = useState<any[]>([]);
   const [lyr, setLyr] = useState({ flood: false, hwy: false, bldg3d: false });
+  const [ter, setTer] = useState({ hillshade: false, tint: false, contours: false, terrain3d: false });
+  const [terMeta, setTerMeta] = useState<any>(null);
   const [legend, setLegend] = useState<{ on: boolean; docks: boolean; label: string }>({ on: false, docks: false, label: "Pools" });
   const [pointOn, setPointOn] = useState(false);
   const [hint, setHint] = useState("");
@@ -808,6 +810,18 @@ export default function App() {
                     <span style={{ display: "flex", flexDirection: "column" }}>{label}
                       <span className="gt-srcline" data-testid="layer-source">{srcLine(srcs, k === "flood" ? "fema" : k === "hwy" ? "openstreetmap" : "overture")}</span></span></label>))}
                 <div className="gt-srcline" style={{ padding: "6px 10px 4px" }} data-testid="imagery-source">Imagery: {srcLine(srcs, year === 2020 ? "naip 2020" : "naip 2022")}</div>
+                <div className="gt-ter-h">Terrain · USGS 3DEP lidar 2016</div>
+                {([["hillshade", "Hillshade"], ["tint", "Elevation"], ["contours", "5 m contours"], ["terrain3d", "3D terrain"]] as const).map(([k, label]) => (
+                  <label key={k} className="gt-check"><input type="checkbox" checked={ter[k]} data-testid={`terrain-${k}`}
+                    onChange={() => { const on = !ter[k]; setTer((o) => ({ ...o, [k]: on }));
+                      void gm.current?.setTerrain(k, on).then((mt) => setTerMeta(mt)).catch((e) => { setTer((o) => ({ ...o, [k]: false })); setToast(String(e.message || e)); }); }} />
+                    {label}</label>))}
+                {(ter.tint || ter.hillshade || ter.terrain3d) && terMeta && (
+                  <div className="gt-ter-legend" data-testid="terrain-legend">
+                    {ter.tint && <><div className="gt-ter-ramp" style={{ background: `linear-gradient(90deg, ${(terMeta.products.elevation_tint.legend.stops_rgb as number[][]).map((c) => `rgb(${c.join(",")})`).join(",")})` }} />
+                      <div className="gt-ter-scale"><span>{terMeta.products.elevation_tint.legend.min_m} m</span><span>{terMeta.products.elevation_tint.legend.max_m} m</span></div></>}
+                    <div className="gt-srcline">{terMeta.vertical_datum?.name ?? "NAVD88"} (by 3DEP convention). Uncoloured = no lidar ground measurement: unknown.{ter.terrain3d ? " 3D surface fills gaps for display only." : ""}</div>
+                  </div>)}
               </div>)}
 
             <div className="gt-frost" role="status" style={{ position: "absolute", top: 16, left: "50%", transform: "translateX(-50%)", borderRadius: 999,

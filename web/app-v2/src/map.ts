@@ -106,6 +106,48 @@ export class GtMap {
     if (year !== this.year) this.addImagery(year);
   }
 
+  // ---------------- terrain (real lidar products, data/terrain/v1; served by api/terrain_api.py) ----------------
+  // Hillshade + elevation tint are transparent where the lidar has no ground measurement, so missing coverage shows
+  // as plain imagery. The 3D surface fills those gaps for display only (meta: visual_only), never for measurement.
+  private terrainMeta: any = null;
+  async setTerrain(id: "hillshade" | "tint" | "contours" | "terrain3d", on: boolean, place = "Lake_Norman") {
+    await this.ready;
+    const m = this.map;
+    const base = `/api/v1/terrain/${place}`;
+    if (!this.terrainMeta) this.terrainMeta = await fetch(`${base}/meta`).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+    const meta = this.terrainMeta;
+    if (!meta?.products) throw new Error("terrain not available for this area");
+    const before = m.getLayer("anchor-ref") ? "anchor-ref" : undefined;
+    if (id === "hillshade" || id === "tint") {
+      const key = id === "tint" ? "elevation_tint" : "hillshade";
+      const lid = `ter-${id}`;
+      if (!m.getSource(lid)) {
+        m.addSource(lid, { type: "image", url: `${base}/${key}.png`, coordinates: meta.products[key].corners_lonlat } as any);
+        m.addLayer({ id: lid, type: "raster", source: lid, layout: { visibility: "none" },
+          paint: { "raster-opacity": id === "tint" ? 0.85 : 1, "raster-fade-duration": 300 } as any }, before);
+      }
+      m.setLayoutProperty(lid, "visibility", on ? "visible" : "none");
+    } else if (id === "contours") {
+      if (!m.getSource("ter-contours")) {
+        m.addSource("ter-contours", { type: "geojson", data: `${base}/contours.geojson` });
+        m.addLayer({ id: "ter-contours", type: "line", source: "ter-contours", minzoom: 13, layout: { visibility: "none" },
+          paint: { "line-color": "#7dd3fc", "line-opacity": ["case", ["==", ["%", ["get", "elev_m"], 25], 0], 0.85, 0.4],
+            "line-width": ["case", ["==", ["%", ["get", "elev_m"], 25], 0], 1.4, 0.7] } as any }, before);
+        m.addLayer({ id: "ter-contour-labels", type: "symbol", source: "ter-contours", minzoom: 15,
+          filter: ["==", ["%", ["get", "elev_m"], 25], 0], layout: { visibility: "none", "symbol-placement": "line",
+            "text-field": ["concat", ["to-string", ["get", "elev_m"]], " m"], "text-size": 11 },
+          paint: { "text-color": "#e0f2fe", "text-halo-color": "#0b1220", "text-halo-width": 1.2 } }, before);
+      }
+      for (const l of ["ter-contours", "ter-contour-labels"]) m.setLayoutProperty(l, "visibility", on ? "visible" : "none");
+    } else {
+      if (!m.getSource("ter-dem")) m.addSource("ter-dem", { type: "raster-dem", tiles: [`${location.origin}${base}/rgb/{z}/{x}/{y}.png`],
+        tileSize: 256, minzoom: 10, maxzoom: 15, encoding: "mapbox" } as any);
+      (m as any).setTerrain(on ? { source: "ter-dem", exaggeration: 2 } : null);
+      m.easeTo({ pitch: on ? 60 : 0, bearing: on ? -20 : 0, duration: 1400 });
+    }
+    return meta;
+  }
+
   async setLayer(id: "flood" | "hwy" | "bldg3d", on: boolean) {
     await this.ready;
     const m = this.map;
