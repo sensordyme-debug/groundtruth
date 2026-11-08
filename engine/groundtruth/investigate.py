@@ -113,6 +113,13 @@ class EmptyArgs(BaseModel):
     pass
 
 
+class ProviderPlacesArgs(BaseModel):
+    query: str
+    place: str | None = None
+    bbox: list[float] | None = None
+    geojson: dict[str, Any] | None = None
+
+
 OPS: dict[str, dict[str, Any]] = {
     "resolve_area": {"args": AreaArgs, "label": "Resolve the area", "why": "every later step is bounded by it"},
     "check_coverage": {"args": AreaArgs, "label": "Check what data covers it",
@@ -123,6 +130,8 @@ OPS: dict[str, dict[str, Any]] = {
     "find_like": {"args": LikeArgs, "label": "Find objects like the examples", "why": "your examples, compared with every patch"},
     "find_buildings": {"args": BuildingsArgs, "label": "Find buildings", "why": "Overture building footprints and heights"},
     "find_places": {"args": PlacesArgs, "label": "Find places", "why": "Overture places by category or name"},
+    "search_providers": {"args": ProviderPlacesArgs, "label": "Check commercial place providers",
+                         "why": "Foursquare / Yelp listings (provider-reported, not verified here); optional"},
     "filter": {"args": FilterArgs, "label": "Apply a condition", "why": "keep only results that meet it"},
     "explain": {"args": ExplainArgs, "label": "Measure each result", "why": "the facts behind each result (its WHY line)"},
     "compare_years": {"args": CompareArgs, "label": "Compare with 2020", "why": "what changed between the two imagery years"},
@@ -355,6 +364,8 @@ def compile_plan(objective: str, context: dict[str, Any] | None = None, prev: In
         elif p.target_kind == "place_category":
             last = add("find_places", {"query": p.target, "place": scope.get("place"), "bbox": scope.get("bbox")}, ["s2"])
             target_desc = str(p.target)
+            add("search_providers", {"query": str(p.target), "place": scope.get("place"), "bbox": scope.get("bbox"),
+                                     "geojson": scope.get("geojson")}, ["s2"])
             targets.append(target_desc)
         else:
             return None, {"fallback": "chat", "reason": "no investigable target: handled as a chat turn"}
@@ -514,6 +525,9 @@ def run(inv: Investigation, engine, prev: Investigation | None = None) -> Invest
                 s.status = "done"
                 s.count = len(out) if out is not None else None
                 _event(inv, s, "done", s.detail or s.label)
+        except _Skip as e:
+            s.status, s.detail = "skipped", str(e)
+            _event(inv, s, "skipped", s.detail)
         except Exception as e:  # noqa: BLE001 (a tool error must not take the investigation down)
             s.status, s.error = "failed", f"{type(e).__name__}: {e}"[:300]
             _event(inv, s, "failed", s.error)
@@ -536,6 +550,10 @@ def run(inv: Investigation, engine, prev: Investigation | None = None) -> Invest
 
 class StepTimeout(RuntimeError):
     pass
+
+
+class _Skip(RuntimeError):
+    """An optional step that could not run for a stated, expected reason (e.g. no provider keys): skipped, not failed."""
 
 
 def _with_timeout(fn: Callable[[], Any], seconds: float, op: str):
@@ -673,6 +691,28 @@ def _exec(s: PlanStep, eng, src, inv: Investigation, envs, feats):
                     method=env.method[:300], measurement={"count": len(fs)}, feature_ids=[_fid(f) for f in fs],
                     strength="moderate", confidence_note="listed places (points of interest), not seen in imagery")
         return env, fs
+    if s.op == "search_providers":
+        from groundtruth.places import build_providers, search_places
+        usable = [n for n, pr in build_providers().items() if pr.status()["enabled"]]
+        if not usable:
+            s.detail = "skipped: no place-provider key is installed (Foursquare / Yelp); Google is disabled by policy"
+            raise _Skip(s.detail)
+        area = {k: getattr(a, k) for k in ("geojson", "bbox", "place") if getattr(a, k)}
+        env = search_places(a.query, area, investigation_id=inv.id)
+        if env.status == "declined":
+            s.detail = f"skipped: {env.declined_reason}"
+            raise _Skip(s.detail)
+        fs = env.result.geojson["features"]
+        s.detail = f"{len(fs)} listings from {', '.join(usable)}"
+        _add_ev(inv, s, "detection", f"{len(fs)} {a.query} listed by {', '.join(usable)} inside the area.",
+                source={"name": " / ".join(u.title() for u in usable), "url": "", "date": time.strftime("%Y-%m-%d"),
+                        "licence": "provider terms (docs/compliance/API_TERMS_REVIEW.md)"},
+                method="provider search, validated against the area geometry, deduplicated across providers",
+                measurement={"listings": len(fs)}, feature_ids=[_fid(f) for f in fs], strength="weak",
+                confidence_note="provider-reported; several providers may share upstream data, so agreement is not verification",
+                limitations=list(env.limits)[-3:])
+        return env, None  # supporting evidence only: it never replaces the mapped set
+
     if s.op == "filter":
         # denominator integrity: for a MEASURED condition, measure every input first so the step can report
         # passing / failing / unknown separately (unknown is never counted as passing or failing)
