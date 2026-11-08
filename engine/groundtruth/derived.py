@@ -174,3 +174,30 @@ def assign_docks(houses: list[dict[str, Any]], docks: Sequence[dict[str, Any]], 
                       "properties": {"kind": "dock_link", "house_id": p["id"], "dock_id": did,
                                      "dist_m": round(float(hc.distance(dg.centroid)), 1)}})
     return links
+
+
+def dock_is_new(dock_geom_wgs84: dict[str, Any], img_new, img_old, c: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Was this dock absent in the older imagery? Compares the dock footprint in both years (conf dock_new_since): new when
+    2022 shows deck (bright pixels) and the older year shows water there (dark) with almost no deck, even after growing
+    the footprint by grow_m. ``img_*`` are providers.base.Imagery windows in EPSG:32617 covering the dock."""
+    from rasterio.features import geometry_mask
+
+    c = c or conf()["dock_new_since"]
+    gm = to_measure(shape(dock_geom_wgs84))
+
+    def fracs(img, geom):
+        luma = img.rgb[..., :3].astype(np.float32) @ np.array([0.299, 0.587, 0.114], np.float32)
+        inside = ~geometry_mask([mapping(geom)], out_shape=luma.shape, transform=img.transform)
+        v = luma[inside]
+        if v.size < 4:
+            return None
+        return {"deck": float((v >= c["bright_luma_min"]).mean()), "water": float((v <= c["water_luma_max"]).mean()),
+                "px": int(v.size)}
+
+    new, old = fracs(img_new, gm), fracs(img_old, gm.buffer(c["grow_m"]))
+    if new is None or old is None:
+        return {"new": None, "why": "no pixels under the dock"}
+    is_new = new["deck"] >= c["deck_frac_2022_min"] and old["deck"] <= c["deck_frac_old_max"] and \
+        old["water"] >= c["water_frac_old_min"]
+    return {"new": bool(is_new), "deck_2022": round(new["deck"], 3), "deck_old": round(old["deck"], 3),
+            "water_old": round(old["water"], 3)}

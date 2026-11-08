@@ -1,5 +1,51 @@
 # Status for Monish
 
+## Try it now (branch `redesign/conversational`, API on the PC)
+- **http://localhost:8000/** is the new conversational app. Click **Houses with pools**, then the pills **in Lake Norman** →
+  **with lake and dock access** → **which got docks since 2020**. Click a thumbnail to open the detail sheet. Drag the
+  2020/2022 slider. Try **Not this**, then ⋯ → **Export CSV**.
+- **New search (+)** → **Swimming pools**. Pick a tile, **Continue**, then **in Lake Norman**.
+- Type **who owns these houses**: it is declined in the chat.
+- The old UI is at **http://localhost:8000/classic**.
+- Check (WSL, worktree root): `~/.venvs/gt-browser/bin/python scripts/demo_check_v2.py`. Compare screenshots: `bash scripts/compare_shots.sh`.
+
+## CHECKPOINT A (MEGA BUILD Phase 1): waiting for your look at the compare screenshots
+- PHASE 1: done (Phase 6 not started; it waits for your approval)
+- **Try it:** see above.
+- **Numbers:**
+  - demo_check v2: 31/31 at 1440×900 and at 1920×1080.
+  - Chain, warm, per message (time until the reply is on screen):
+
+    | message | time |
+    |---|---|
+    | houses with pools | 281 ms |
+    | in Lake Norman | 186 ms |
+    | with lake and dock access | 71 ms |
+    | docks since 2020 | 15 ms |
+    | decline | 150 ms |
+    | picked pools in Lake Norman | 404 ms |
+
+  - Lake Norman (real, derived v1): 946 houses with a pool → 63 lakefront with their own dock → none of their 69 docks is new since 2020.
+  - "Not this" gives 63 → 62, and the CSV has 62 rows.
+- **Files:**
+  - `docs/media/v2/compare/<state>_{mockup,build}_<size>.png`. States: landing, transition, step1–4, sheet, pick.
+  - The differences are listed in `docs/media/v2/compare/DIFF.md`: 6 fixed, 10 remaining. The remaining ones are real imagery or real numbers, or the data does not support them yet.
+  - `data/out/dock_change_sheet.jpg` is the 2020/2022 dock contact sheet.
+- **Broken / still wrong:**
+  - Step 4 has nothing new to show, because no dock is new since 2020. The mockup's "31 docks added" is not true for these houses.
+  - Eye-check precision for the v1 derived concepts is not re-measured yet (Phase 2.3).
+  - Windows free RAM is 2.6 GB with the API warm (rule: ≥ 4 GB). This is Phase 4.3, next after Phase 2.
+  - The 90 s recording is not made yet.
+- **Decisions I made:**
+  - "Docks new since 2020" is a build-time imagery check: the dock footprint is deck in 2022 and water in 2020. Thresholds are in `conf/derived.json`. I eye-checked the 24 most change-like docks: all existed in 2020, so the answer is "none".
+  - The LLM does not rewrite the hero-chain replies or the questions back to the user, because it garbled them ("Look for areas…"). Other replies are still rewritten.
+  - "Not this" re-runs the request behind that card without the house, so the count is a real recount, not a client-side subtraction.
+  - Imagery loads only after the first question. Local tiles up to z15 are disk-cached (`data/cache/tiles/local/v1`), and the demo views are pre-rendered (`scripts/prerender_tiles.py`).
+  - Step 2+ flies to the densest cluster at z14.3, so the rings show as in the design. Zoom out to see all the dots.
+- **Needs me:** look at the compare screenshots (approve Phase 1, or list what to change) before Phase 6.
+- **Free RAM:** PC Windows 2.6 GB, WSL 14 GB available; laptop 41 GB available; VRAM 4.7 / 8.2 GB.
+
+
 ## Competition-ready checkpoint (2026-11-08): see docs/HANDOFF.md for the full picture
 - Feature work is STOPPED at `demo-final`. demo_check passes cold, warm ×2 and offline; the typed chain runs < 1 s per
   step warm; declines 49/49; Windows free with the API warm 4.9 GB; manifest + rollback tested.

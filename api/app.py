@@ -229,19 +229,23 @@ def _warmup() -> None:
                 except Exception as err:  # never block the API on the laptop
                     WARM["llm"] = {"ok": False, "error": f"{type(err).__name__}: {err}"[:160]}
             if e.aoi == "county" and os.environ.get("GROUNDTRUTH_WARMUP_CHAIN", "1") == "1":
-                from groundtruth.planner import run as plan_run
+                from api.planner.brain import chat
 
-                # BEFORE healthy: the landing chips + the typed demo chain, with the contexts the UI sends (planner
-                # results are cached), so the first run after a restart meets every budget
-                for chip, ctx in (("find swimming pools", None), ("pools within 1 km of I-485 in Ballantyne", None),
-                                  ("pools in flood zones in Matthews", None), ("new pools since 2020 in Ballantyne", None),
-                                  ("boat docks on Lake Norman", None),
-                                  ("pools within 1 km of I-485", {"place": WARM["place"]}),
-                                  ("houses within 10 minutes of Ardrey Kell High School", None),
-                                  ("buildings taller than 30 m in Uptown", None),
-                                  ("export them as CSV", {"place": WARM["place"],
-                                                          "last_text": "new pools since 2020 in Ballantyne"})):
-                    plan_run(lambda year: eng(None, year), chip, ctx)
+                # BEFORE healthy: the conversational demo (web/app-v2) through the same chat path, with exactly the
+                # contexts that app sends (it carries place + last_text forward), so every message is warm after a restart
+                def ui_chain(texts, first=None):
+                    c = dict(first or {"place": None, "last_text": None, "picked": [], "not": []})
+                    for tx in texts:
+                        o = chat(lambda year: eng(None, year), tx, dict(c))
+                        p = o.get("plan") or {}
+                        c = {**c, "place": p.get("place") or c.get("place"), "last_text": p.get("effective_text") or tx}
+                    return c
+
+                ui_chain(["Houses with pools", "in Lake Norman", "with lake and dock access", "which got docks since 2020"])
+                ui_chain(["Swimming pools"])
+                c = ui_chain(["Swimming pools"], {"place": None, "last_text": None, "picked": ["backyard_pool"], "not": []})
+                ui_chain(["in Lake Norman"], c)
+                ui_chain(["pools in flood zones in Lake Norman", "who owns these houses"])
                 WARM["chain_ms"] = round((_t.perf_counter() - t0) * 1000)
             # results are cached now: hand the index file pages back (page cache → Windows), incl. the 2020 index
             e.index.release_pages()
@@ -483,7 +487,17 @@ def naip_tile(year: int, z: int, x: int, y: int) -> Response:
         return Response(status_code=204)
     # 1) local COGs (rio-tiler, TiTiler's engine) when every scene under the tile is cached locally
     if os.environ.get("GROUNDTRUTH_LOCAL_TILES", "1") == "1":
+        # rendered tiles up to z15 are kept on disk (low zooms read many scenes: slow to render, and they would hold the
+        # browser's few connections while a chat request waits)
+        lc = config.DATA / "cache" / "tiles" / "local" / "v1" / str(year) / str(z) / str(x) / f"{y}.png"
+        if z <= 15 and lc.exists():
+            if lc.stat().st_size == 0:
+                return Response(status_code=204)
+            return FileResponse(lc, media_type="image/png", headers={**hdr, "X-Tile-Source": "local-cache"})
         png = _provider.render_tile(year, z, x, y)
+        if z <= 15 and png is not None:
+            lc.parent.mkdir(parents=True, exist_ok=True)
+            tmp = lc.with_suffix(f".{os.getpid()}.tmp"); tmp.write_bytes(png); os.replace(tmp, lc)
         if png == b"":
             return Response(status_code=204)
         if png is not None:
@@ -547,15 +561,62 @@ def boundary() -> dict[str, Any]:
     return _provider.get_boundary()
 
 
-# ---------------- demo UI (web/dist, built by Vite) ----------------
+# ---------------- NAIP crops (thumbnails + the detail sheet's 2020↔2022 swipe), from the local COGs ----------------
+@app.get("/api/v1/crop")
+def naip_crop(bbox: str, year: int = 2022, px: int = 256) -> Response:
+    """JPEG crop of NAIP for bbox=w,s,e,n (EPSG:4326) and year, px on the long side (≤ 640). Cached on disk."""
+    import hashlib
+    import io
+
+    from PIL import Image
+
+    try:
+        b = [float(v) for v in bbox.split(",")]
+        assert len(b) == 4 and b[0] < b[2] and b[1] < b[3] and (b[2] - b[0]) < 0.05 and (b[3] - b[1]) < 0.05
+    except (ValueError, AssertionError):
+        raise HTTPException(400, "bbox=w,s,e,n (EPSG:4326, at most ~5 km)")
+    px = max(32, min(int(px), 640))
+    key = hashlib.sha1(f"{[round(v, 6) for v in b]}|{year}|{px}".encode()).hexdigest()[:20]
+    cache = config.DATA / "cache" / "crops" / "v1" / f"{key}.jpg"
+    if cache.exists():
+        return FileResponse(cache, media_type="image/jpeg", headers={"Cache-Control": "max-age=86400"})
+    im = _provider.get_imagery(tuple(b), year)
+    img = Image.fromarray(im.rgb)
+    img.thumbnail((px, px), Image.LANCZOS)
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=86)
+    cache.parent.mkdir(parents=True, exist_ok=True)
+    tmp = cache.with_suffix(".tmp")
+    tmp.write_bytes(buf.getvalue())
+    tmp.replace(cache)
+    return Response(buf.getvalue(), media_type="image/jpeg", headers={"Cache-Control": "max-age=86400"})
+
+
+# ---------------- UIs: the conversational app (web/app-v2/dist) at "/", the classic demo UI (web/dist) at "/classic" --
 _DIST = config.ROOT / "web" / "dist"
+_V2 = config.ROOT / "web" / "app-v2" / "dist"
 
 
 @app.get("/")
 def ui_index() -> Response:
+    if (_V2 / "index.html").exists():
+        return FileResponse(_V2 / "index.html", headers={"Cache-Control": "no-store"})
+    return JSONResponse({"ok": True, "ui": "not built (cd web/app-v2 && npm run build)", "classic": "/classic"})
+
+
+@app.get("/v2assets/{path:path}")
+def ui_v2_assets(path: str) -> Response:
+    p = (_V2 / "v2assets" / path).resolve()
+    if not str(p).startswith(str((_V2 / "v2assets").resolve())) or not p.exists():
+        raise HTTPException(404)
+    return FileResponse(p)
+
+
+@app.get("/classic")
+def ui_classic() -> Response:
     if (_DIST / "index.html").exists():
         return FileResponse(_DIST / "index.html", headers={"Cache-Control": "no-store"})
-    return JSONResponse({"ok": True, "ui": "not built (cd web && npm run build)", "docs": "/docs"})
+    return JSONResponse({"ok": True, "ui": "classic not built (cd web && npm run build)"})
 
 
 @app.get("/assets/{path:path}")

@@ -159,7 +159,8 @@ def parse(text: str) -> Plan:
     if re.search(r"\b(dock access|(their |its |own |a |with )?(own )?docks?|boat docks? of their own)\b", t) and \
             re.search(r"\b(with|have|has|their|own|access|and)\b.*\bdocks?\b|\bdocks?\b.*\baccess\b", t):
         p.require += [r for r in ("lakefront", "has_dock") if r not in p.require]
-    dm = re.search(r"\bdocks?\b.*\b(?:added|new|built)\b.*\bsince (20\d\d)\b|\b(?:added|new|built)\b.*\bdocks?\b.*\bsince (20\d\d)\b", t)
+    dm = re.search(r"\bdocks?\b.*\b(?:added|new|built)\b.*\bsince (20\d\d)\b|"
+                   r"\b(?:added|new|built|got|gained|put in)\b.*\bdocks?\b.*\bsince (20\d\d)\b", t)
     if dm:
         p.docks_new_since = int(dm.group(1) or dm.group(2))
         p.new_since = None
@@ -339,7 +340,7 @@ def _run(engine_for, text: str, context: dict[str, Any], plan_override: Plan | N
         actions.append({"action": "fly_to", "bbox": bbox, "label": plan.place})
     r_cur, current, r_fa, what = None, None, None, plan.target
     if plan.target_kind == "derived":
-        return _run_derived(eng, plan, step, actions, extra, keep, done)
+        return _run_derived(eng, plan, step, actions, extra, keep, done, context)
     if plan.target_kind == "canopy":
         cv = eng.canopy(place=plan.place, bbox=bbox)
         r_cv = step("canopy", cv)
@@ -359,17 +360,40 @@ def _run(engine_for, text: str, context: dict[str, Any], plan_override: Plan | N
         r_pick = step("pick_candidates", pc)
         actions.append({"action": "show_candidates", "envelope_ref": r_pick})
         tiles = [f for f in pc.result.geojson["features"] if not f["properties"].get("no_clear_example")]
+        picked, nots = list(context.get("picked") or []), list(context.get("not") or [])
+        # ask "which do you mean?" in the chat when the request is a bare multi-meaning concept (no place, no filter,
+        # nothing picked yet); the UI answers with context {picked, not} (sense ids)
+        if not picked and not plan.place and not plan.layer and not plan.host_layer and not plan.minutes \
+                and plan.concept in ASK_PICK and context.get("ask_pick", True):
+            actions.append({"action": "ask_pick", "envelope_ref": r_pick})
+            actions.append({"action": "say", "text": ASK_PICK[plan.concept]})
+            extra["_final_ref"] = r_pick
+            return {**done("ok"), "current_ref": r_pick, "ask": "pick"}
         want = DEFAULT_SENSE.get(plan.concept)
-        chosen = next((f for f in tiles if f["properties"]["sense_id"] == want), tiles[0] if tiles else None)
-        if chosen is None:
-            actions.append({"action": "say", "text": f"No clear example of {plan.concept_query} in the index ({r_pick})."})
+        chosen_l = [f for f in tiles if f["properties"]["sense_id"] in picked] or \
+            [next((f for f in tiles if f["properties"]["sense_id"] == want), tiles[0] if tiles else None)]
+        chosen_l = [c for c in chosen_l if c is not None]
+        if not chosen_l:
+            actions.append({"action": "say", "text": f"I couldn't find a clear example of {plan.concept_query} ({r_pick})."})
             return done("partial")
-        ex = chosen["properties"]["example"]
-        neg = [f["properties"]["example"] for f in tiles if f is not chosen]
-        plan.notes.append(f"example: sense '{chosen['properties']['sense_id']}' ({ex}); other senses used as negatives")
+        chosen = chosen_l[0]
+        exs = [c["properties"]["example"] for c in chosen_l]
+        ex = exs[0]
+        hard = [f["properties"]["example"] for f in tiles if f["properties"]["sense_id"] in nots]
+        neg = [f["properties"]["example"] for f in tiles if f not in chosen_l and f["properties"]["sense_id"] not in nots]
+        plan.notes.append(f"examples: senses {[c['properties']['sense_id'] for c in chosen_l]}; others used as negatives")
         extra.update(chosen_sense=chosen["properties"]["sense_id"], chosen_example=ex, negatives=neg)
-        env = eng.find_all([ex], [], place=plan.place if eng.aoi == "county" else None, concept=plan.concept, soft_exclude=neg,
-                           within_layer=plan.host_layer)
+        if picked and not plan.place and not plan.layer and not plan.minutes:  # just picked: overview + where to look
+            env = eng.find_all(exs, hard, concept=plan.concept, soft_exclude=neg)
+            r = step("find_all", env)
+            labels = " and ".join(c["properties"]["sense_label"].lower() for c in chosen_l)
+            actions.append({"action": "heatmap", "envelope_ref": r, "label": labels})
+            actions.append({"action": "say", "text": f"Got it: {labels}. Where should I look?"})
+            actions.append({"action": "suggest_places", "places": SUGGEST_PLACES})
+            extra["_final_ref"] = r
+            return {**done("ok"), "current_ref": r, "ask": "where"}
+        env = eng.find_all(exs, hard, place=plan.place if eng.aoi == "county" else None, concept=plan.concept,
+                           soft_exclude=neg, within_layer=plan.host_layer)
         what = (plan.concept_query or plan.concept).replace("_", " ")
         r_fa = step("find_all", env)
     elif plan.target_kind == "place_category":
@@ -509,9 +533,10 @@ def _run(engine_for, text: str, context: dict[str, Any], plan_override: Plan | N
 
 
 SUGGEST_PLACES = ["Lake Norman", "Ballantyne", "Myers Park"]
+ASK_PICK = {"swimming_pool": "“Pools” can mean a few things from above. Which do you mean?"}
 
 
-def _run_derived(eng, plan: Plan, step, actions, extra, keep, done) -> dict[str, Any]:
+def _run_derived(eng, plan: Plan, step, actions, extra, keep, done, context=None) -> dict[str, Any]:
     """'houses with pools' (+ lake / dock access, biggest, docks since <year>). No place → a county overview (heat glow of
     residential pools, NOT a count) and 'Where should I look?'. With a place → the precomputed derived set."""
     assume = "I took “houses with pools” as backyard pools at homes."
@@ -526,12 +551,12 @@ def _run_derived(eng, plan: Plan, step, actions, extra, keep, done) -> dict[str,
         keep.add(r)
         extra.update(chosen_sense=chosen["properties"]["sense_id"], assumed=assume)
         actions.append({"action": "heatmap", "envelope_ref": r, "label": "residential pools (top matches)"})
-        actions.append({"action": "say", "text": f"{assume} Here's where they cluster across the county (top matches, "
-                                                 f"not a full count). Where should I look? ({r})"})
+        actions.append({"action": "say", "text": f"Backyard pools next to houses, across the county. Where should I look? ({r})"})
         actions.append({"action": "suggest_places", "places": SUGGEST_PLACES})
         extra["_final_ref"] = r
         return {**done("ok"), "current_ref": r, "ask": "where"}
     env = eng.find_derived("house_with_pool", place=plan.place, require=tuple(plan.require), sort=plan.sort,
+                           exclude_ids=tuple((context or {}).get("rejected") or ()),
                            docks_new_since=plan.docks_new_since)
     r = step("find_derived", env)
     if env.status == "declined":
@@ -544,10 +569,14 @@ def _run_derived(eng, plan: Plan, step, actions, extra, keep, done) -> dict[str,
     actions.append({"action": "add_results", "layer_id": "results", "envelope_ref": r})
     where = f"around {plan.place}" if plan.place == "Lake Norman" else f"in {plan.place}"
     if plan.docks_new_since:
-        nd = (m.get("docks_new_since") or {}).get("docks_new", 0)
-        txt = f"{n} lakefront houses with a pool whose dock looks new since {plan.docks_new_since} ({nd} new docks)."
+        dn = m.get("docks_new_since") or {}
+        nd, nc = dn.get("docks_new", 0), dn.get("docks_checked", 0)
+        if n == 0:
+            txt = f"None of them: all {nc} of their docks were already there in {plan.docks_new_since}."
+        else:
+            txt = f"{nd} of their {nc} docks weren't there in {plan.docks_new_since}."
     elif "has_dock" in plan.require:
-        txt = f"{n:,} lakefront houses with a pool and their own dock."
+        txt = f"{n:,} of them sit on the lake and have their own dock." if plan.follow_up_of else             f"{n:,} lakefront houses with a pool and their own dock."
     elif "lakefront" in plan.require:
         txt = f"{n:,} lakefront houses with a pool {where}."
     else:
@@ -557,5 +586,15 @@ def _run_derived(eng, plan: Plan, step, actions, extra, keep, done) -> dict[str,
     if not plan.follow_up_of:
         txt = f"{assume} {txt}"
     actions.append({"action": "say", "text": f"{txt} ({r})"})
+    if plan.docks_new_since:
+        nxt = []
+    elif "has_dock" in plan.require:
+        nxt = ["which got docks since 2020"]
+    elif plan.place == "Lake Norman":
+        nxt = ["with lake and dock access", "only the biggest pools"]
+    else:
+        nxt = ["only the biggest pools"]
+    if nxt:
+        actions.append({"action": "suggest", "pills": nxt})
     extra["_final_ref"] = r
     return {**done("ok"), "current_ref": r}

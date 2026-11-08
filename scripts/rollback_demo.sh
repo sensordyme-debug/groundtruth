@@ -25,6 +25,8 @@ for k, v in m["data_versions"].items():
 PY
 )"
 env | grep '^GROUNDTRUTH_DATA_' | sort
+echo "== build the UI of $TAG (web/dist is not in git)"
+(cd web && bash -lic "npm run build" 2>&1 | tail -1)
 echo "== restart API with warm-up"
 GROUNDTRUTH_GPU=1 bash scripts/restart_and_warm.sh | tail -1 | cut -c1-160
 echo "== demo_check"

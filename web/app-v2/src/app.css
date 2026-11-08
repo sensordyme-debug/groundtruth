@@ -1,0 +1,55 @@
+/* Values copied from the approved mockup's <style> block (Main.dc.html); class names kept (gt-*). */
+html, body, #root { height: 100%; }
+body { margin: 0; background: var(--canvas); font-family: var(--font); color: var(--ink); -webkit-font-smoothing: antialiased; }
+* { box-sizing: border-box; }
+button { font: inherit; color: inherit; }
+a { color: var(--ink); } a:hover { color: var(--muted); }
+.gt-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.gt-pill { border: 1px solid var(--hairline); background: rgba(255, 255, 255, .72); border-radius: 999px; padding: 8px 15px; font-size: 13px; color: var(--muted); cursor: pointer; min-height: 36px; transition: background .18s ease, color .18s ease, border-color .18s ease; }
+.gt-pill:hover { background: #fff; color: var(--ink); border-color: var(--hairline-strong); }
+.gt-pill:disabled { opacity: .4; cursor: default; }
+.gt-dark { background: var(--ink); color: #fff; border-color: var(--ink); }
+.gt-dark:hover { background: #2b2b2b; color: #fff; border-color: #2b2b2b; }
+.gt-send { width: 32px; height: 32px; border-radius: 999px; border: 0; background: var(--ink); color: #fff; display: flex; align-items: center; justify-content: center; cursor: pointer; flex: none; transition: opacity .18s ease; }
+.gt-send:disabled { opacity: .22; cursor: default; }
+.gt-ta { display: block; width: 100%; border: 0; outline: none; resize: none; background: transparent; font: inherit; font-size: 15px; line-height: 1.5; color: var(--ink); padding: 0; }
+.gt-ta::placeholder { color: var(--placeholder); }
+.gt-ghost { border: 0; background: transparent; padding: 5px 7px; border-radius: 8px; cursor: pointer; font-size: 13px; color: var(--muted); transition: background .18s ease, color .18s ease; }
+.gt-ghost:hover { background: var(--hover); color: var(--ink); }
+.gt-icon { width: 40px; height: 40px; border: 0; background: transparent; border-radius: 10px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--muted); transition: background .18s ease, color .18s ease; }
+.gt-icon:hover { background: rgba(0, 0, 0, .05); color: var(--ink); }
+.gt-card { position: relative; background: #fff; border: 1px solid var(--hairline); border-radius: 14px; padding: 14px; box-shadow: var(--shadow-card); }
+.gt-thumb { padding: 0; border: 0; border-radius: 8px; overflow: hidden; cursor: pointer; display: block; width: 100%; aspect-ratio: 4 / 3; background: #7b925e; transition: transform .18s ease; }
+.gt-thumb:hover { transform: translateY(-1px); }
+.gt-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.gt-menu { position: absolute; top: 44px; right: 10px; z-index: 2; background: #fff; border: 1px solid var(--hairline); border-radius: 12px; padding: 4px; min-width: 170px; box-shadow: 0 12px 32px rgba(0, 0, 0, .08); }
+.gt-menuitem { display: block; width: 100%; text-align: left; border: 0; background: transparent; padding: 9px 10px; border-radius: 8px; font-size: 13px; cursor: pointer; }
+.gt-menuitem:hover { background: var(--canvas); }
+.gt-frost { background: var(--frost); backdrop-filter: blur(20px) saturate(1.2); -webkit-backdrop-filter: blur(20px) saturate(1.2); border: 1px solid rgba(231, 230, 227, .9); box-shadow: var(--shadow-frost); }
+.gt-dots span { display: inline-block; width: 5px; height: 5px; border-radius: 50%; background: #9a9a96; margin-right: 4px; animation: gtDot 1.1s infinite ease-in-out; }
+.gt-dots span:nth-child(2) { animation-delay: .15s; }
+.gt-dots span:nth-child(3) { animation-delay: .3s; }
+@keyframes gtDot { 0%, 80%, 100% { opacity: .25; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-2px); } }
+.gt-in { animation: gtIn .38s ease-out both; }
+@keyframes gtIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.gt-tile { position: relative; border-radius: 10px; overflow: hidden; background: #fff; transition: opacity .18s ease, border-color .18s ease; }
+.gt-tilebtn { display: block; width: 100%; padding: 0; border: 0; background: transparent; cursor: pointer; text-align: left; }
+.gt-tileimg { display: block; width: 100%; aspect-ratio: 120 / 84; object-fit: cover; background: #7a9160; }
+.gt-x { position: absolute; top: 6px; right: 6px; width: 26px; height: 26px; border-radius: 999px; border: 0; background: rgba(255, 255, 255, .92); cursor: pointer; opacity: 0; transition: opacity .15s ease; display: flex; align-items: center; justify-content: center; color: var(--ink); }
+.gt-tile:hover .gt-x, .gt-x:focus-visible { opacity: 1; }
+.gt-range { width: 100%; accent-color: var(--ink); margin: 0; }
+.gt-check { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; font-size: 13px; cursor: pointer; }
+.gt-check:hover { background: var(--canvas); }
+.gt-check input { accent-color: var(--ink); width: 15px; height: 15px; margin: 0; }
+button:focus-visible, textarea:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.maplibregl-ctrl-attrib { font-size: 10px !important; background: rgba(255, 255, 255, .6) !important; }
+.maplibregl-canvas:focus { outline: none; }
+@media (max-width: 760px) {
+  .gt-ws { flex-direction: column-reverse !important; }
+  .gt-panel { width: 100% !important; height: 56vh !important; border-right: 0 !important; border-top: 1px solid var(--hairline); }
+  .gt-map { flex: none !important; height: 44vh !important; }
+  .gt-sheet { left: 12px !important; right: 12px !important; width: auto !important; top: 12px !important; bottom: 12px !important; }
+  .gt-zoom { display: none !important; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+.gt-ta:focus-visible { outline: none; }  /* the composer card is the focus target */
