@@ -1,0 +1,18 @@
+{
+  "_doc": "Vector tiles (PMTiles) per context layer: zoom range, tippecanoe options and the properties kept. Built by scripts/build_pmtiles.py, served by GET /api/v1/vt/{layer}/{z}/{x}/{y}.pbf (source-layer = layer name).",
+  "layers": {
+    "fema_flood_zones": {"minzoom": 9, "maxzoom": 15, "source": "web", "properties": ["fld_zone", "flood_class", "floodway"],
+                         "options": ["--coalesce-densest-as-needed", "--detect-shared-borders", "--simplification=4"]},
+    "osm_i485": {"minzoom": 9, "maxzoom": 15, "properties": ["name", "ref"], "options": []},
+    "osm_i77": {"minzoom": 9, "maxzoom": 15, "properties": ["name", "ref"], "options": []},
+    "osm_i85": {"minzoom": 9, "maxzoom": 15, "properties": ["name", "ref"], "options": []},
+    "osm_motorways": {"minzoom": 9, "maxzoom": 15, "properties": ["name", "ref"], "options": []},
+    "osm_light_rail": {"minzoom": 9, "maxzoom": 15, "properties": ["name"], "options": []},
+    "osm_light_rail_stations": {"minzoom": 10, "maxzoom": 15, "properties": ["name"], "options": ["-r1"]},
+    "osm_water": {"minzoom": 9, "maxzoom": 15, "properties": ["name", "natural", "water"], "options": ["--coalesce-densest-as-needed"]},
+    "osm_warehouses": {"minzoom": 11, "maxzoom": 15, "properties": ["name", "building"], "options": []},
+    "overture_buildings": {"minzoom": 13, "maxzoom": 15, "properties": ["id", "height", "num_floors", "class", "subtype"],
+                           "options": ["--drop-densest-as-needed", "--extend-zooms-if-still-dropping"]},
+    "overture_places": {"minzoom": 13, "maxzoom": 15, "properties": ["id", "name", "category"], "options": ["--drop-densest-as-needed", "--extend-zooms-if-still-dropping"]}
+  }
+}

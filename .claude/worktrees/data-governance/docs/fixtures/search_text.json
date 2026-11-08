@@ -1,0 +1,228 @@
+{
+ "request": {
+  "method": "POST",
+  "path": "/api/v1/tools/search_text",
+  "body": {
+   "aoi": "south_charlotte",
+   "year": 2022,
+   "query": "swimming pool",
+   "k": 12
+  }
+ },
+ "response": {
+  "tool": "search_text",
+  "version": "0.2.0",
+  "status": "partial",
+  "result": {
+   "geojson": {
+    "type": "FeatureCollection",
+    "features": [
+     {
+      "type": "Feature",
+      "id": "2022_e4478_n33678",
+      "geometry": {
+       "type": "Polygon",
+       "coordinates": [
+        [
+         [
+          -80.82600664968541,
+          35.059951820810255
+         ],
+         [
+          -80.8245301376975,
+          35.059951820810255
+         ],
+         [
+          -80.8245301376975,
+          35.061165870310404
+         ],
+         [
+          -80.82600664968541,
+          35.061165870310404
+         ],
+         [
+          -80.82600664968541,
+          35.059951820810255
+         ]
+        ]
+       ]
+      },
+      "properties": {
+       "chip_id": "2022_e4478_n33678",
+       "year": 2022,
+       "scene_id": "nc_m_3508058_sw_17_060_20220602",
+       "thumb_url": "/api/v1/chips/2022_e4478_n33678.jpg?aoi=south_charlotte",
+       "chip_bbox": [
+        -80.82600664968541,
+        35.059951820810255,
+        -80.8245301376975,
+        35.061165870310404
+       ],
+       "cell": 50,
+       "cell_bbox": [
+        -80.8256378,
+        35.0601046,
+        -80.8254533,
+        35.0602564
+       ],
+       "score": 0.3032,
+       "rank": 1,
+       "view": 0
+      }
+     },
+     {
+      "type": "Feature",
+      "id": "2022_e4482_n33673",
+      "geometry": {
+       "type": "Polygon",
+       "coordinates": [
+        [
+         [
+          -80.82096455149751,
+          35.054750434410195
+         ],
+         [
+          -80.81948805938254,
+          35.054750434410195
+         ],
+         [
+          -80.81948805938254,
+          35.05596454560459
+         ],
+         [
+          -80.82096455149751,
+          35.05596454560459
+         ],
+         [
+          -80.82096455149751,
+          35.054750434410195
+         ]
+        ]
+       ]
+      },
+      "properties": {
+       "chip_id": "2022_e4482_n33673",
+       "year": 2022,
+       "scene_id": "nc_m_3508058_sw_17_060_20220602",
+       "thumb_url": "/api/v1/chips/2022_e4482_n33673.jpg?aoi=south_charlotte",
+       "chip_bbox": [
+        -80.82096455149751,
+        35.054750434410195,
+        -80.81948805938254,
+        35.05596454560459
+       ],
+       "cell": 29,
+       "cell_bbox": [
+        -80.8200421,
+        35.0553569,
+        -80.8198575,
+        35.0555087
+       ],
+       "score": 0.3,
+       "rank": 2,
+       "view": 0
+      }
+     },
+     {
+      "type": "Feature",
+      "id": "2022_e4472_n33675",
+      "geometry": {
+       "type": "Polygon",
+       "coordinates": [
+        [
+         [
+          -80.83359312989278,
+          35.05684616426456
+         ],
+         [
+          -80.83211678552745,
+          35.05684616426456
+         ],
+         [
+          -80.83211678552745,
+          35.05806012252904
+         ],
+         [
+          -80.83359312989278,
+          35.05806012252904
+         ],
+         [
+          -80.83359312989278,
+          35.05684616426456
+         ]
+        ]
+       ]
+      },
+      "properties": {
+       "chip_id": "2022_e4472_n33675",
+       "year": 2022,
+       "scene_id": "nc_m_3508058_sw_17_060_20220602",
+       "thumb_url": "/api/v1/chips/2022_e4472_n33675.jpg?aoi=south_charlotte",
+       "chip_bbox": [
+        -80.83359312989278,
+        35.05684616426456,
+        -80.83211678552745,
+        35.05806012252904
+       ],
+       "cell": 38,
+       "cell_bbox": [
+        -80.8324868,
+        35.0573009,
+        -80.8323023,
+        35.0574526
+       ],
+       "score": 0.2892,
+       "rank": 3,
+       "view": 0
+      }
+     }
+    ]
+   },
+   "metrics": {
+    "count": 12,
+    "indexed_chips": 272,
+    "score_max": 0.3032
+   }
+  },
+  "confidence": 0.384,
+  "method": "OpenCLIP ViT-B-16 (laion2b_s34b_b88k) text\u2192image cosine, max over whole chip + 2\u00d72 quadrant crops, NAIP 2022; hit cell = most salient DINOv2 cell in the best view; confidence = mean relative score within this result (heuristic)",
+  "assumptions": [
+   "NAIP 2022 imagery reflects the ground today"
+  ],
+  "limits": [
+   "NAIP 2022 at 0.6 m/px: objects smaller than ~3 m are not resolvable",
+   "Scores are embedding similarities, not calibrated probabilities",
+   "Hits are 16.8 m cells of 134 m chips until outlined (`outline` / find_all's background outlines)",
+   "Only the 'south_charlotte' area is indexed, not the whole county"
+  ],
+  "sources": [
+   {
+    "name": "USDA NAIP 2022",
+    "url": "https://planetarycomputer.microsoft.com/dataset/naip",
+    "date": "2022-06-02/2022-09-27",
+    "licence": "Public domain (USDA FSA NAIP); hosted by Microsoft Planetary Computer (PC Terms of Use)"
+   }
+  ],
+  "steps": [
+   {
+    "phase": "embed_query",
+    "detail": "OpenCLIP text, 4-prompt ensemble",
+    "ms": 5214.34
+   },
+   {
+    "phase": "search",
+    "detail": "max over 1 CLIP views \u00d7 272 chips",
+    "ms": 27.43
+   },
+   {
+    "phase": "localise+dedupe",
+    "detail": "salient DINOv2 cell in best view; cell NMS",
+    "ms": 43.55
+   }
+  ],
+  "declined_reason": null,
+  "_fixture": {
+   "truncated_features": 9
+  }
+ }
+}

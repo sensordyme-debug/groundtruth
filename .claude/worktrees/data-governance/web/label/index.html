@@ -1,0 +1,388 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Groundtruth Labeller</title>
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" />
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<style>
+  :root {
+    --bg: #0b0d10; --panel: #13161b; --panel-2: #1a1e25; --line: #262b34; --text: #e6e8eb;
+    --muted: #8b93a1; --accent: #4f8cff; --ok: #35c47c; --warn: #f2b24c; --bad: #ef5a5a;
+    --radius: 10px; --gap: 12px; --font: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    --mono: ui-monospace, "JetBrains Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 13px/1.4 var(--font); }
+  #map { position: absolute; inset: 0; cursor: crosshair; }
+  .maplibregl-canvas-container.maplibregl-interactive { cursor: crosshair; }
+  .panel { position: absolute; background: color-mix(in srgb, var(--panel) 94%, transparent); border: 1px solid var(--line);
+           border-radius: var(--radius); box-shadow: 0 8px 30px rgba(0,0,0,.35); backdrop-filter: blur(6px); }
+  #left { top: 12px; left: 12px; width: 300px; padding: 14px; }
+  #right { top: 12px; right: 12px; width: 300px; bottom: 44px; display: flex; flex-direction: column; }
+  h1 { font-size: 14px; margin: 0 0 2px; letter-spacing: .2px; }
+  .sub { color: var(--muted); font-size: 12px; margin-bottom: 12px; }
+  .search { display: flex; gap: 6px; }
+  input[type=text] { flex: 1; background: var(--panel-2); color: var(--text); border: 1px solid var(--line);
+                     border-radius: 8px; padding: 7px 9px; font: inherit; outline: none; }
+  input[type=text]:focus { border-color: var(--accent); }
+  button { background: var(--panel-2); color: var(--text); border: 1px solid var(--line); border-radius: 8px;
+           padding: 6px 10px; font: inherit; cursor: pointer; }
+  button:hover { border-color: #3a4150; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 4px; }
+  .chip { font-size: 11.5px; padding: 3px 8px; border-radius: 999px; color: var(--muted); }
+  #results { margin-top: 6px; max-height: 160px; overflow: auto; }
+  #results div { padding: 5px 6px; border-radius: 6px; cursor: pointer; color: var(--muted); font-size: 12px; }
+  #results div:hover { background: var(--panel-2); color: var(--text); }
+  .section { margin-top: 14px; font-size: 11px; text-transform: uppercase; letter-spacing: .8px; color: var(--muted); }
+  .concept { display: grid; grid-template-columns: 22px 12px 1fr auto auto; align-items: center; gap: 8px;
+             padding: 7px 8px; border-radius: 8px; cursor: pointer; border: 1px solid transparent; margin-top: 4px; }
+  .concept:hover { background: var(--panel-2); }
+  .concept.active { background: var(--panel-2); border-color: var(--line); }
+  .key { font: 11px var(--mono); color: var(--muted); border: 1px solid var(--line); border-radius: 5px; text-align: center; padding: 1px 0; }
+  .dot { width: 12px; height: 12px; border-radius: 50%; }
+  .cnt { font: 12px var(--mono); color: var(--muted); }
+  .cnt b { color: var(--text); font-weight: 600; }
+  .modes { display: flex; gap: 6px; margin-top: 8px; }
+  .mode { flex: 1; text-align: center; padding: 8px 6px; }
+  .mode.active.t { border-color: var(--ok); color: var(--ok); background: color-mix(in srgb, var(--ok) 12%, var(--panel-2)); }
+  .mode.active.l { border-color: var(--warn); color: var(--warn); background: color-mix(in srgb, var(--warn) 12%, var(--panel-2)); }
+  .help { color: var(--muted); font-size: 11.5px; margin-top: 10px; }
+  .help code { font-family: var(--mono); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; color: var(--text); }
+  #status { margin-top: 10px; font: 12px var(--mono); padding: 6px 8px; border-radius: 8px; background: var(--panel-2); }
+  #status.ok { color: var(--ok); } #status.warn { color: var(--warn); } #status.bad { color: var(--bad); }
+  #right .head { padding: 12px 14px 8px; border-bottom: 1px solid var(--line); }
+  #right .head .row { display: flex; justify-content: space-between; align-items: center; }
+  #list { overflow: auto; flex: 1; padding: 6px; }
+  .item { display: grid; grid-template-columns: 10px 1fr auto; gap: 8px; align-items: center; padding: 6px 8px;
+          border-radius: 7px; cursor: pointer; font-size: 12px; }
+  .item:hover { background: var(--panel-2); }
+  .item .meta { color: var(--muted); font: 11px var(--mono); }
+  .item .x { color: var(--muted); border: none; background: none; padding: 0 4px; }
+  .item .x:hover { color: var(--bad); }
+  .exports { display: flex; gap: 6px; padding: 10px; border-top: 1px solid var(--line); }
+  .exports a { flex: 1; text-align: center; color: var(--text); text-decoration: none; border: 1px solid var(--line);
+               border-radius: 8px; padding: 6px; background: var(--panel-2); }
+  #year { position: absolute; left: 12px; bottom: 12px; padding: 6px 10px; font: 12px var(--mono); display: flex; gap: 8px; align-items: center; }
+  #year button { padding: 2px 8px; font: 12px var(--mono); }
+  #year button.active { border-color: var(--accent); color: var(--accent); }
+  #pending { display: none; }
+  .maplibregl-ctrl-attrib { background: rgba(10,12,15,.7) !important; color: var(--muted); }
+  .maplibregl-ctrl-attrib a { color: var(--muted); }
+  @media (max-width: 760px) { #right { display: none; } #left { width: calc(100% - 24px); } }
+</style>
+</head>
+<body>
+<div id="map"></div>
+
+<div id="left" class="panel">
+  <h1>Groundtruth · Labeller</h1>
+  <div class="sub">Mecklenburg County, NC · human-made test set</div>
+  <div class="search">
+    <input id="q" type="text" placeholder="Jump to a place (OSM)…" autocomplete="off" />
+    <button id="go">Go</button>
+  </div>
+  <div class="chips" id="presets"></div>
+  <div id="results"></div>
+
+  <div class="section">Concept</div>
+  <div id="concepts"></div>
+
+  <div class="section">Click drops</div>
+  <div class="modes">
+    <button class="mode t" data-kind="true_match"><b>T</b> · true match</button>
+    <button class="mode l" data-kind="look_alike"><b>L</b> · look-alike</button>
+  </div>
+  <div class="help">Click the map to drop a label. <code>Shift</code>+click drops the other kind.<br/>
+    <code>1</code>–<code>5</code> concept · <code>T</code>/<code>L</code> kind · <code>U</code> undo · drag to pan</div>
+  <div id="status">connecting…</div>
+</div>
+
+<div id="right" class="panel">
+  <div class="head">
+    <div class="row"><b>Labels</b><span id="total" class="cnt">0</span></div>
+    <div class="sub" style="margin:2px 0 0">Saved to data/labels/ on every click</div>
+  </div>
+  <div id="list"></div>
+  <div class="exports">
+    <a href="/api/labels/export.csv" download>CSV</a>
+    <a href="/api/labels/export.geojson" download>GeoJSON</a>
+  </div>
+</div>
+
+<div id="year" class="panel"></div>
+
+<script>
+const CONCEPT_META = {
+  swimming_pool:      { name: "Swimming pool",      color: "#38bdf8" },
+  construction_site:  { name: "Construction site",  color: "#f59e0b" },
+  warehouse:          { name: "Warehouse",          color: "#a78bfa" },
+  parking_lot:        { name: "Parking lot",        color: "#94a3b8" },
+  solar_installation: { name: "Solar installation", color: "#f43f5e" },
+};
+const PRESETS = ["UNC Charlotte", "Lake Norman", "Ballantyne", "Uptown Charlotte", "Charlotte Douglas International Airport"];
+const PENDING_KEY = "groundtruth.pending.v1";
+
+let CFG = null, concept = "swimming_pool", kind = "true_match", year = null;
+let labels = [];            // features from server
+let counts = {};
+let pending = loadPending(); // labels not yet confirmed by server
+
+function loadPending() { try { return JSON.parse(localStorage.getItem(PENDING_KEY) || "[]"); } catch { return []; } }
+function savePending() { try { localStorage.setItem(PENDING_KEY, JSON.stringify(pending)); } catch {} }
+function uid() { return (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random()).replace(/-/g, ""); }
+const $ = (id) => document.getElementById(id);
+
+function setStatus(text, cls) { const s = $("status"); s.textContent = text; s.className = cls || ""; }
+
+async function api(path, opts = {}) {
+  const r = await fetch(path, { headers: { "Content-Type": "application/json" }, ...opts });
+  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+  return r.json();
+}
+
+// ---------------- map ----------------
+const map = new maplibregl.Map({
+  container: "map",
+  style: { version: 8, sources: {}, layers: [{ id: "bg", type: "background", paint: { "background-color": "#0b0d10" } }] },
+  center: [-80.7335, 35.3070], zoom: 16, maxZoom: 20, minZoom: 9, hash: true, attributionControl: false,
+});
+window.addEventListener("error", (ev) => setStatus(`page error: ${ev.message}`, "bad"));
+map.on("error", (ev) => { console.error(ev.error); if (!String(ev.error && ev.error.message).includes("tile")) setStatus(`map error: ${ev.error && ev.error.message}`, "bad"); });
+map.addControl(new maplibregl.NavigationControl({ visualizePitch: false }), "bottom-right");
+map.addControl(new maplibregl.ScaleControl({ unit: "imperial" }), "bottom-right");
+map.addControl(new maplibregl.AttributionControl({ compact: true,
+  customAttribution: 'Imagery: USDA NAIP (public domain) via Microsoft Planetary Computer · Boundary: US Census TIGER · Search: © OpenStreetMap contributors (ODbL)' }), "bottom-right");
+map.dragRotate.disable(); map.touchZoomRotate.disableRotation();
+
+function setYear(y) {
+  year = y;
+  const url = `/api/tiles/naip/${y}/{z}/{x}/{y}.png`;
+  if (map.getSource("naip")) { map.removeLayer("naip"); map.removeSource("naip"); }
+  map.addSource("naip", { type: "raster", tiles: [url], tileSize: 256, maxzoom: 18, minzoom: 10,
+                          bounds: CFG.county_bbox });
+  map.addLayer({ id: "naip", type: "raster", source: "naip" }, map.getLayer("county") ? "county" : undefined);
+  renderYear();
+}
+
+function renderYear() {
+  const d = CFG.naip_dates[String(year)] || [];
+  const btns = CFG.naip_full_years.filter(y => y === CFG.primary_year || y === CFG.secondary_year)
+    .map(y => `<button class="${y === year ? "active" : ""}" data-y="${y}">${y}</button>`).join("");
+  $("year").innerHTML = `<span>NAIP <b>${year}</b> · 0.6 m · ${d[0] || ""}…${d[1] || ""}</span>${btns}`;
+  $("year").querySelectorAll("button").forEach(b => b.onclick = () => setYear(+b.dataset.y));
+}
+
+function labelsFC() {
+  const feats = labels.slice();
+  for (const p of pending) feats.push({ type: "Feature", properties: { ...p, pending: true }, geometry: { type: "Point", coordinates: [p.lon, p.lat] } });
+  return { type: "FeatureCollection", features: feats };
+}
+
+function colorExpr() {
+  const e = ["match", ["get", "concept"]];
+  for (const [k, v] of Object.entries(CONCEPT_META)) e.push(k, v.color);
+  e.push("#ffffff"); return e;
+}
+
+function addLayers() {
+  map.addSource("county", { type: "geojson", data: "/api/boundary" });
+  map.addLayer({ id: "county", type: "line", source: "county", paint: { "line-color": "#ffffff", "line-width": 1.5, "line-opacity": 0.7, "line-dasharray": [3, 2] } });
+  map.addSource("labels", { type: "geojson", data: labelsFC() });
+  const active = ["==", ["get", "concept"], ["literal", concept]];
+  map.addLayer({ id: "labels", type: "circle", source: "labels", paint: {
+    "circle-radius": ["interpolate", ["linear"], ["zoom"], 12, 3, 16, 7, 19, 10],
+    "circle-color": ["case", ["==", ["get", "kind"], "true_match"], colorExpr(), "rgba(0,0,0,0.35)"],
+    "circle-stroke-color": ["case", ["==", ["get", "kind"], "true_match"], "#ffffff", colorExpr()],
+    "circle-stroke-width": ["case", ["==", ["get", "kind"], "true_match"], 1.5, 3],
+    "circle-opacity": ["case", ["boolean", ["get", "pending"], false], 0.5, 1],
+    "circle-stroke-opacity": 1,
+  }});
+  refreshActiveStyle();
+}
+
+function refreshActiveStyle() {
+  if (!map.getLayer("labels")) return;
+  const isActive = ["==", ["get", "concept"], concept];
+  map.setPaintProperty("labels", "circle-opacity", ["case", ["boolean", ["get", "pending"], false], 0.5, isActive, 1, 0.45]);
+  map.setPaintProperty("labels", "circle-stroke-opacity", ["case", isActive, 1, 0.45]);
+}
+
+function redraw() {
+  const src = map.getSource("labels"); if (src) src.setData(labelsFC());
+  renderConcepts(); renderList();
+}
+
+// ---------------- UI ----------------
+function renderConcepts() {
+  if (!CFG) return;
+  const html = CFG.concepts.map((c, i) => {
+    const m = CONCEPT_META[c], n = counts[c] || { true_match: 0, look_alike: 0 };
+    const pt = pending.filter(p => p.concept === c && p.kind === "true_match").length;
+    const pl = pending.filter(p => p.concept === c && p.kind === "look_alike").length;
+    return `<div class="concept ${c === concept ? "active" : ""}" data-c="${c}">
+      <span class="key">${i + 1}</span><span class="dot" style="background:${m.color}"></span>
+      <span>${m.name}</span>
+      <span class="cnt" title="true matches">T <b>${n.true_match + pt}</b></span>
+      <span class="cnt" title="look-alikes">L <b>${n.look_alike + pl}</b></span></div>`;
+  }).join("");
+  $("concepts").innerHTML = html;
+  $("concepts").querySelectorAll(".concept").forEach(el => el.onclick = () => setConcept(el.dataset.c));
+  document.querySelectorAll(".mode").forEach(b => b.classList.toggle("active", b.dataset.kind === kind));
+}
+
+function renderList() {
+  const all = labelsFC().features.slice().reverse();
+  $("total").textContent = `${labels.length}${pending.length ? " + " + pending.length + " unsaved" : ""}`;
+  $("list").innerHTML = all.slice(0, 500).map(f => {
+    const p = f.properties, m = CONCEPT_META[p.concept] || { name: p.concept, color: "#fff" };
+    const t = (p.created_at || "").slice(11, 19);
+    return `<div class="item" data-id="${p.id}" data-lon="${f.geometry.coordinates[0]}" data-lat="${f.geometry.coordinates[1]}">
+      <span class="dot" style="width:10px;height:10px;${p.kind === "true_match" ? `background:${m.color}` : `border:2px solid ${m.color}`}"></span>
+      <span>${m.name} <span class="meta">${p.kind === "true_match" ? "true" : "look-alike"}${p.pending ? " · saving…" : ""} ${t}</span></span>
+      ${p.pending ? "" : `<button class="x" title="delete">✕</button>`}</div>`;
+  }).join("") || `<div class="sub" style="padding:10px">No labels yet. Pick a concept and click the map.</div>`;
+  $("list").querySelectorAll(".item").forEach(el => {
+    el.onclick = (ev) => {
+      if (ev.target.classList.contains("x")) { ev.stopPropagation(); deleteLabel(el.dataset.id); return; }
+      map.flyTo({ center: [+el.dataset.lon, +el.dataset.lat], zoom: Math.max(map.getZoom(), 18) });
+    };
+  });
+}
+
+function setConcept(c) { concept = c; renderConcepts(); refreshActiveStyle(); }
+function setKind(k) { kind = k; renderConcepts(); }
+
+// ---------------- saving ----------------
+function applyState(st) { if (st.counts) counts = st.counts; }
+
+async function loadLabels() {
+  const st = await api("/api/labels");
+  labels = st.geojson.features; applyState(st);
+  // drop pending items the server already has (idempotent ids)
+  const have = new Set(labels.map(f => f.properties.id));
+  pending = pending.filter(p => !have.has(p.id)); savePending();
+  redraw();
+}
+
+async function flushPending() {
+  while (pending.length) {
+    const p = pending[0];
+    try {
+      const st = await api("/api/labels", { method: "POST", body: JSON.stringify(p) });
+      pending.shift(); savePending();
+      labels.push(st.label); applyState(st);
+      setStatus(`saved ✓ ${CONCEPT_META[p.concept].name} · ${p.kind === "true_match" ? "true" : "look-alike"} · total ${st.total}`, "ok");
+    } catch (e) {
+      setStatus(`NOT SAVED YET (${pending.length} queued, kept in browser) · retrying… ${String(e).slice(0, 60)}`, "bad");
+      redraw();
+      setTimeout(flushPending, 3000);
+      return;
+    }
+  }
+  redraw();
+}
+let flushing = false;
+async function queueFlush() { if (flushing) return; flushing = true; try { await flushPending(); } finally { flushing = false; } }
+
+function dropLabel(lngLat, k) {
+  const p = { id: uid(), concept, kind: k, lon: +lngLat.lng.toFixed(7), lat: +lngLat.lat.toFixed(7),
+              naip_year: year, map_zoom: +map.getZoom().toFixed(2), created_at: new Date().toISOString() };
+  pending.push(p); savePending(); redraw(); setStatus("saving…", "warn"); queueFlush();
+}
+
+async function undo() {
+  if (pending.length) { pending.pop(); savePending(); redraw(); setStatus("undid unsaved label", "warn"); return; }
+  try {
+    const st = await api("/api/labels/undo", { method: "POST" });
+    if (st.undone) labels = labels.filter(f => f.properties.id !== st.undone.properties.id);
+    applyState(st); redraw();
+    setStatus(st.undone ? `undone ✓ (${CONCEPT_META[st.undone.properties.concept].name}) · total ${st.total}` : "nothing to undo", "ok");
+  } catch (e) { setStatus(`undo failed: ${e}`, "bad"); }
+}
+
+async function deleteLabel(id) {
+  try {
+    const st = await api(`/api/labels/${id}`, { method: "DELETE" });
+    labels = labels.filter(f => f.properties.id !== id); applyState(st); redraw();
+    setStatus(`deleted ✓ · total ${st.total}`, "ok");
+  } catch (e) { setStatus(`delete failed: ${e}`, "bad"); }
+}
+
+// ---------------- search ----------------
+async function search(q) {
+  if (!q.trim()) return;
+  $("results").innerHTML = `<div>searching…</div>`;
+  try {
+    const res = await api(`/api/geocode?q=${encodeURIComponent(q)}`);
+    if (!res.length) { $("results").innerHTML = `<div>no match inside Mecklenburg</div>`; return; }
+    jump(res[0]);
+    $("results").innerHTML = res.map((r, i) => `<div data-i="${i}">${r.name}</div>`).join("");
+    $("results").querySelectorAll("div").forEach(el => el.onclick = () => jump(res[+el.dataset.i]));
+  } catch (e) { $("results").innerHTML = `<div>search failed: ${e}</div>`; }
+}
+function jump(r) {
+  const [w, s, e, n] = r.bbox;
+  if (Math.abs(e - w) > 0.0005 && Math.abs(n - s) > 0.0005) map.fitBounds([[w, s], [e, n]], { padding: 60, maxZoom: 17, duration: 900 });
+  else map.flyTo({ center: [r.lon, r.lat], zoom: 17 });
+}
+
+// ---------------- wiring ----------------
+document.addEventListener("keydown", (ev) => {
+  if (ev.target.tagName === "INPUT") { if (ev.key === "Enter") search($("q").value); if (ev.key === "Escape") ev.target.blur(); return; }
+  if (ev.ctrlKey || ev.metaKey || ev.altKey) return;
+  const k = ev.key.toLowerCase();
+  if (k >= "1" && k <= "5") setConcept(CFG.concepts[+k - 1]);
+  else if (k === "t") setKind("true_match");
+  else if (k === "l") setKind("look_alike");
+  else if (k === "u") undo();
+  else if (k === "/") { ev.preventDefault(); $("q").focus(); }
+});
+$("go").onclick = () => search($("q").value);
+document.querySelectorAll(".mode").forEach(b => b.onclick = () => setKind(b.dataset.kind));
+$("presets").innerHTML = PRESETS.map(p => `<button class="chip">${p.replace(" International Airport", " airport").replace(" Charlotte", "")}</button>`).join("");
+$("presets").querySelectorAll("button").forEach((b, i) => b.onclick = () => { $("q").value = PRESETS[i]; search(PRESETS[i]); });
+
+map.on("click", (ev) => {
+  const k = ev.originalEvent.shiftKey ? (kind === "true_match" ? "look_alike" : "true_match") : kind;
+  dropLabel(ev.lngLat, k);
+});
+window.addEventListener("beforeunload", (ev) => { if (pending.length) { ev.preventDefault(); ev.returnValue = ""; } });
+
+// Boot: config first (concepts render immediately), then map layers. The map's "load" event can fire before
+// the config request returns (the style is inline), so never rely on catching it after an await.
+(async () => {
+  try {
+    CFG = await api("/api/config");
+  } catch (e) {
+    setStatus(`cannot reach the label server: ${e}`, "bad");
+    return;
+  }
+  renderConcepts();
+  setStatus("loading map…", "warn");
+  let booted = false;
+  const boot = async () => {
+    if (booted) return; booted = true;
+    try {
+      addLayers();
+      setYear(CFG.primary_year);
+      await loadLabels();
+      setStatus(`ready · ${labels.length} labels on disk`, "ok");
+      if (pending.length) queueFlush();
+    } catch (e) {
+      setStatus(`map setup failed: ${e}`, "bad");
+      console.error(e);
+    }
+  };
+  if (map.loaded()) boot(); else { map.once("load", boot); setTimeout(() => { if (map.isStyleLoaded()) boot(); }, 1500); }
+  setTimeout(() => {
+    if (!booted) {
+      const gl = document.createElement("canvas").getContext("webgl2") || document.createElement("canvas").getContext("webgl");
+      setStatus(`map did not start · style=${map.isStyleLoaded()} loaded=${map.loaded()} webgl=${!!gl} · try a hard refresh (Ctrl+F5)`, "bad");
+    }
+  }, 4000);
+})();
+</script>
+</body>
+</html>

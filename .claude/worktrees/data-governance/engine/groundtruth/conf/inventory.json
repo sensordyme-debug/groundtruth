@@ -1,0 +1,34 @@
+{
+  "_doc": "Phase 7 area inventory: SAM 2.1 automatic masks (point grid) over a bbox ≤ max_area_km2, each mask labelled by CLIP against this vocabulary, then rules: Overture building overlap → roof; lidar height separates tree canopy from lawn and roof from pavement; concept colour → pool. Colours = legend.",
+  "max_area_km2": 1.2,
+  "window_px": 448,
+  "stride_px": 384,
+  "points_per_side": 24,
+  "point_batch": 64,
+  "iou_min": 0.75,
+  "nms_iou": 0.6,
+  "min_area_m2": 4,
+  "max_area_frac": 0.6,
+  "centre_km": 1.0,
+  "classes": {
+    "roof": {"prompts": ["a building roof"], "colour": "#c05a3c"},
+    "driveway": {"prompts": ["a residential driveway"], "colour": "#9e9e9e"},
+    "road": {"prompts": ["an asphalt road"], "colour": "#4a4a4a"},
+    "parking lot": {"prompts": ["a parking lot with cars"], "colour": "#6f6f8a"},
+    "pool": {"prompts": ["a swimming pool"], "colour": "#2bc4e6"},
+    "lawn": {"prompts": ["a mowed lawn", "grass"], "colour": "#8cc63f"},
+    "tree canopy": {"prompts": ["tree canopy", "trees"], "colour": "#2e7d32"},
+    "bare soil": {"prompts": ["bare dirt", "bare soil"], "colour": "#c9a66b"},
+    "water": {"prompts": ["a pond or lake"], "colour": "#1f5f99"},
+    "solar": {"prompts": ["solar panels"], "colour": "#3949ab"},
+    "sports court": {"prompts": ["a tennis or basketball court"], "colour": "#d81b60"},
+    "other": {"prompts": ["an aerial photo"], "colour": "#bdbdbd"}
+  },
+  "rules": {
+    "building_overlap_min": 0.5,
+    "tree_min_height_m": 2.5,
+    "low_max_height_m": 0.8,
+    "roof_min_height_m": 2.0,
+    "pool_colour_frac_min": 0.5
+  }
+}

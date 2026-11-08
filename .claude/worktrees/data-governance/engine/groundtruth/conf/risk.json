@@ -1,0 +1,97 @@
+{
+  "_doc": "T4 risk answers: data products (data/risk/<version>/, scripts/build_risk_layers.py), filter predicates, WHY-line wording and insight wording. Every threshold and every user-facing phrase lives here. No people data: homes are buildings, never owners or residents.",
+  "flood": {
+    "_doc": "FEMA NFHL flood hazard zones (layer 28, DFIRM 37119C = Mecklenburg). kind: 100yr = the Special Flood Hazard Area (1% annual chance: A, AE, AO, AH, VE, ...); 500yr = shaded X (0.2% annual chance). BFE = FEMA's STATIC_BFE where FEMA provides one (never interpolated or invented).",
+    "zones_100yr": ["A", "AE", "AH", "AO", "AR", "A99", "V", "VE"],
+    "subtype_500yr_contains": ["0.2 PCT"],
+    "dfirm_ids": ["37119C"],
+    "nfhl_url": "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/28",
+    "web_simplify_tolerance_deg": 3e-05,
+    "web_simplify_note": "web copy simplified with tolerance 0.00003 deg (~3 m) and coordinates rounded to 6 decimals (~0.1 m); predicates always use the accurate copy",
+    "ft_to_m": 0.3048,
+    "lowest_grade_ring_m": 2.0,
+    "lowest_grade_percentile": 10
+  },
+  "shore": {
+    "_doc": "Main water bodies from OSM water (ODbL). Edges that only exist because OSM water was clipped to the county line are not shore and are removed (county boundary buffered by county_edge_buffer_m).",
+    "water_bodies": ["Lake Norman", "Mountain Island Lake", "Lake Wylie", "Catawba River"],
+    "extra_osm_ids": ["relation/301023"],
+    "county_edge_buffer_m": 15
+  },
+  "canopy": {
+    "_doc": "canopy = lidar height above ground (3DEP 2016 nDSM) >= min_height_m AND the NAIP 2022 pixel passes the colour rule (green chromaticity, no NDVI). Precomputed per lidar place at 1 m.",
+    "min_height_m": 3.0,
+    "colour_rule": {"g_chroma_min": 0.355, "green_over_red": true, "green_over_blue_min": 0},
+    "naip_year": 2022,
+    "buffer_m": {"swimming_pool": 2.0, "pool": 2.0, "default": 0.0},
+    "buffer_note": "for pools the footprint is grown by 2 m: an outline is the VISIBLE water, so branches over the pool sit on its edge"
+  },
+  "travel": {"_doc": "minutes_to_<category> = the smallest band whose union of isochrones (from the max_origins nearest places of that category) reaches the object: an upper bound, not an exact time", "bands_min": [5, 10, 15, 20], "max_origins": 12},
+  "slope": {"_doc": "slope of the lidar DTM (bare earth, 1 m) in degrees, median inside the footprint", "stat": "median"},
+  "defaults": {
+    "trees_over_min_pct": 20,
+    "near_shore_m": 100,
+    "below_bfe_m": 1.0,
+    "fire_station_minutes": 10,
+    "steep_slope_deg": 15
+  },
+  "categories": {
+    "_doc": "Overture place categories added for risk questions (places only, never ratings). Merged into conf/places_categories.json categories by the engine.",
+    "fire_station": {"words": ["fire station", "fire stations", "fire department", "fire departments", "fire house", "firehouse", "fire hall"], "category": ["fire_station"]},
+    "hospital": {"words": ["hospital", "hospitals", "emergency room", "emergency rooms", "er"], "category": ["hospital", "specialty_hospital", "emergency_department"]},
+    "marina": {"words": ["marina", "marinas"], "category": ["marina"]},
+    "boat_ramp": {"words": ["boat ramp", "boat ramps", "boat launch", "boat launches", "slipway", "slipways"], "category": ["boat_ramp", "boating_place"], "note": "Overture has almost no boat ramps in Mecklenburg (1 'boating_place'); results will be sparse"}
+  },
+  "unsupported": {
+    "_doc": "Things people ask about that we cannot measure yet: honest decline + what we CAN do.",
+    "driveway": {"pattern": "\\bdriveways?\\b", "say": "I can't measure driveways yet: they aren't mapped as objects, so I can't find them or their slope.", "pills": ["how steep is the ground in {place}", "houses in {place}", "homes on slopes steeper than 15 degrees in {place}"]},
+    "basement": {"pattern": "\\bbasements?\\b", "say": "I can't see basements from above.", "pills": ["homes in the 100-year flood zone in {place}"]},
+    "insurance": {"pattern": "\\b(insurance|premiums?|claims?)\\b", "say": "I don't have insurance or claims data; I can show FEMA flood zones and heights above the base flood elevation.", "pills": ["homes in the 100-year flood zone in {place}"]}
+  },
+  "why": {
+    "_doc": "WHY line: plain words joined by sep. Templates use the feature's properties; a part is skipped when its value is missing.",
+    "sep": " · ",
+    "parts": {
+      "pool_area_m2": "Pool {v:.0f} m²",
+      "area_m2_pool": "Pool {v:.0f} m²",
+      "area_m2_object": "{label} {v:.0f} m²",
+      "footprint_m2": "Home {v:.0f} m²",
+      "height_m": "{v:.0f} m tall",
+      "flood_zone": "Zone {v}",
+      "flood_kind_100yr": "100-year flood zone",
+      "flood_kind_500yr": "500-year flood zone",
+      "no_flood": "outside FEMA flood zones",
+      "shore_dist_m": "{v:.0f} m from the shore",
+      "shore_dist_zero": "at the water's edge",
+      "elev_above_bfe_pos": "{v:.1f} m above the base flood elevation",
+      "elev_above_bfe_neg": "{v:.1f} m below the base flood elevation",
+      "elev_above_bfe_null": "base flood elevation not published here",
+      "canopy_over_pct": "trees over {v:.0f}%",
+      "slope_deg": "ground slope {v:.0f}°",
+      "minutes_to": "within {v:.0f} min drive of a {label}",
+      "minutes_band": "{lo:.0f}–{hi:.0f} min drive to the nearest {label}",
+      "minutes_to_over": "more than {v:.0f} min drive from any {label}",
+      "dist_m_to": "{v:.0f} m from {label}",
+      "has_dock": "own dock",
+      "lakefront": "lakefront",
+      "new_since": "new since {v}",
+      "existing_since": "already there in {v}"
+    }
+  },
+  "insights": {
+    "_doc": "1–3 short strings built only from envelope numbers. {n} counts, {pct} percent of the set.",
+    "count": "{n} {unit}",
+    "in_100yr": "{n} in the 100-year flood zone ({pct}%)",
+    "in_500yr": "{n} in the 500-year flood zone ({pct}%)",
+    "in_any": "{n} in a FEMA flood zone ({pct}%)",
+    "median_above_bfe": "median {v} m above the flood elevation",
+    "median_below_bfe": "median {v} m below the flood elevation",
+    "bfe_unavailable": "height above the flood elevation unavailable (FEMA publishes no BFE for {n_missing} of {n})",
+    "bfe_partial": "flood elevation known for {n_known} of {n}",
+    "median_shore": "median {v} m from the shore",
+    "median_canopy": "median {v}% under trees",
+    "median_minutes": "median {v} min to the nearest {label}",
+    "median_height": "median {v} m tall",
+    "unavailable": "unavailable"
+  }
+}

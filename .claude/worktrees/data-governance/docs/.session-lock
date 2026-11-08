@@ -1,0 +1,4 @@
+session: claude (Opus 5.5) unattended mega-run
+started: 2026-11-07T16:38:25-05:00
+head_at_start: ca18aa0
+rule: if commits appear on main that this session did not make, stop committing and note it in docs/STATUS_FOR_MONISH.md

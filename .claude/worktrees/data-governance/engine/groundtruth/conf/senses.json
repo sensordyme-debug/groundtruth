@@ -1,0 +1,62 @@
+{
+  "_doc": "Sense lists for pick_candidates. Each entry: aliases (normalised query strings that select it) and senses (id, label shown on the tile, prompt fed to OpenCLIP; prompt null = 'unknown/something else', filled from the raw query with diversity). Optional per sense: colour = 'concept' (the concept's colour rule in concepts.json) or a name from _colours, colour_min = fraction of a 14 px patch that must match; if no candidate passes, the tile says 'no clear example'. Edit freely; no code changes needed.",
+  "_colours": {
+    "blue_tarp": {"hsv_lo": [205, 110, 90], "hsv_hi": [240, 255, 255]},
+    "dark_water": {"hsv_lo": [60, 25, 20], "hsv_hi": [200, 220, 120]}
+  },
+  "swimming_pool": {
+    "aliases": ["pool", "pools", "swimming pool", "swimming pools", "swimming_pool"],
+    "senses": [
+      {"id": "backyard_pool", "label": "Backyard pool", "prompt": "a small private swimming pool in a house backyard", "colour": "concept", "colour_min": 0.3},
+      {"id": "community_pool", "label": "Community / apartment pool", "prompt": "a large rectangular community swimming pool with a pool deck", "colour": "concept", "colour_min": 0.5},
+      {"id": "stormwater_pond", "label": "Stormwater pond", "prompt": "a stormwater retention pond with murky green water", "colour": "dark_water", "colour_min": 0.6},
+      {"id": "blue_tarp", "label": "Blue tarp", "prompt": "a blue tarp covering a roof", "colour": "blue_tarp", "colour_min": 0.3},
+      {"id": "lake_water", "label": "Lake / water", "prompt": "a lake with dark water and a wooded shoreline", "colour": "dark_water", "colour_min": 0.8},
+      {"id": "unknown", "label": "Something else", "prompt": null}
+    ]
+  },
+  "construction_site": {
+    "aliases": ["construction", "construction site", "construction sites", "construction_site", "new development"],
+    "senses": [
+      {"id": "cleared_land", "label": "Cleared bare earth", "prompt": "a large area of cleared bare red dirt being graded"},
+      {"id": "building_frame", "label": "Building under construction", "prompt": "a building under construction with cranes and a frame"},
+      {"id": "new_subdivision", "label": "New subdivision", "prompt": "a new housing subdivision with unfinished lots and new streets"},
+      {"id": "road_work", "label": "Road work", "prompt": "road construction with dirt and heavy equipment"},
+      {"id": "dirt_lot", "label": "Dirt lot / quarry", "prompt": "an unpaved dirt lot or quarry"},
+      {"id": "unknown", "label": "Something else", "prompt": null}
+    ]
+  },
+  "warehouse": {
+    "aliases": ["warehouse", "warehouses", "distribution center", "warehouse_building"],
+    "senses": [
+      {"id": "distribution_center", "label": "Distribution center", "prompt": "a huge distribution center warehouse with many truck loading docks"},
+      {"id": "small_industrial", "label": "Small industrial building", "prompt": "a small industrial building with a flat metal roof"},
+      {"id": "big_box_store", "label": "Big-box store", "prompt": "a big box retail store with a large parking lot in front"},
+      {"id": "office_flat_roof", "label": "Flat-roof office", "prompt": "a large office building with a flat white roof"},
+      {"id": "truck_yard", "label": "Truck yard", "prompt": "a truck trailer parking yard"},
+      {"id": "unknown", "label": "Something else", "prompt": null}
+    ]
+  },
+  "parking_lot": {
+    "aliases": ["parking", "parking lot", "parking lots", "parking_lot", "car park"],
+    "senses": [
+      {"id": "surface_lot_full", "label": "Busy surface lot", "prompt": "a surface parking lot full of parked cars"},
+      {"id": "surface_lot_empty", "label": "Empty surface lot", "prompt": "an empty asphalt parking lot with painted lines"},
+      {"id": "parking_deck", "label": "Parking deck", "prompt": "a multi-storey parking garage deck seen from above"},
+      {"id": "road_asphalt", "label": "Road / wide asphalt", "prompt": "a wide asphalt road intersection"},
+      {"id": "truck_trailer_lot", "label": "Truck / trailer lot", "prompt": "a lot full of truck trailers"},
+      {"id": "unknown", "label": "Something else", "prompt": null}
+    ]
+  },
+  "solar_installation": {
+    "aliases": ["solar", "solar panels", "solar panel", "solar installation", "solar installations", "solar farm", "solar_installation"],
+    "senses": [
+      {"id": "solar_farm", "label": "Ground solar farm", "prompt": "rows of ground-mounted solar panels in a solar farm", "colour": "concept", "colour_min": 0.4},
+      {"id": "rooftop_solar_res", "label": "Rooftop solar (house)", "prompt": "solar panels on the roof of a house", "colour": "concept", "colour_min": 0.3},
+      {"id": "rooftop_solar_comm", "label": "Rooftop solar (commercial)", "prompt": "solar panels on a large flat commercial roof", "colour": "concept", "colour_min": 0.4},
+      {"id": "solar_carport", "label": "Solar carport", "prompt": "solar panel canopies over a parking lot", "colour": "concept", "colour_min": 0.3},
+      {"id": "dark_roof", "label": "Dark roof / skylights", "prompt": "a dark roof with skylights"},
+      {"id": "unknown", "label": "Something else", "prompt": null}
+    ]
+  }
+}

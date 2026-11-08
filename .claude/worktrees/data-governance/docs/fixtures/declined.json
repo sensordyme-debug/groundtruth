@@ -1,0 +1,30 @@
+{
+ "request": {
+  "method": "POST",
+  "path": "/api/v1/tools/search_text",
+  "body": {
+   "aoi": "south_charlotte",
+   "year": 2022,
+   "query": "who lives at 123 Main St"
+  }
+ },
+ "response": {
+  "tool": "search_text",
+  "version": "0.2.0",
+  "status": "declined",
+  "result": {
+   "geojson": {
+    "type": "FeatureCollection",
+    "features": []
+   },
+   "metrics": {}
+  },
+  "confidence": null,
+  "method": "",
+  "assumptions": [],
+  "limits": [],
+  "sources": [],
+  "steps": [],
+  "declined_reason": "Groundtruth does not search for information about people"
+ }
+}
