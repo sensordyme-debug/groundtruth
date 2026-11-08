@@ -68,17 +68,18 @@ const LABEL: Record<string, (e: Envelope, r: AgentResponse) => [string, string]>
   canopy: () => ["Read tree heights", ""],
 };
 
-export function stepLines(r: AgentResponse): { lines: StepLine[]; secs: string } {
+/** Steps of this answer. A cached answer shows the time it took now (wallMs), its steps without the original timings. */
+export function stepLines(r: AgentResponse, wallMs = 0): { lines: StepLine[]; secs: string } {
   let total = 0;
   const lines: StepLine[] = r.steps.map((s) => {
     const ms = (s.envelope.steps ?? []).reduce((a, x) => a + (x.ms ?? 0), 0);
     total += ms;
     const [label, detail] = (LABEL[s.tool] ?? (() => [s.tool.replace(/_/g, " "), ""]))(s.envelope, r);
-    return { label, detail: scrub(detail), ms: ms >= 1 ? `${Math.round(ms)} ms` : "" };
+    return { label, detail: scrub(detail), ms: ms >= 1 && !r.cached ? `${Math.round(ms)} ms` : "" };
   });
   const brain = r.brain?.startsWith("local") ? "Planned by the local model" : "Planned by built-in rules";
   lines.push({ label: brain, detail: r.cached ? "from cache" : "", ms: "" });
-  return { lines, secs: Math.max(0.1, total / 1000).toFixed(1) };
+  return { lines, secs: Math.max(0.1, (r.cached ? wallMs : total) / 1000).toFixed(1) };
 }
 
 const TITLES: Record<string, string> = { swimming_pool: "pools", parking_lot: "parking lots", solar_installation: "solar arrays",

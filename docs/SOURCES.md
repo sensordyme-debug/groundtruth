@@ -60,6 +60,8 @@ Every dataset and model Groundtruth uses. One-line summary per item for sign-off
 | torch 2.14.1+cu126 / torchvision (GPU env for the one-off precompute + approved query-time GPU) | BSD-3 |
 | @fontsource/inter, @fontsource/ibm-plex-mono (UI fonts, bundled locally) | SIL OFL 1.1 (fonts) / MIT (packaging) |
 | React 18.3.1, Vite 5.4.11, TypeScript 5.6.3, @vitejs/plugin-react | MIT / MIT / Apache-2.0 / MIT |
+| Playwright 1.64.1 (Python; demo_check v2, compare screenshots: dev tool only) | Apache-2.0 |
+| web/app-v2 (the conversational app): no new dependencies (same React, MapLibre GL 4.7.1, Vite, Inter as the classic UI) | — |
 
 ### Places config
 `engine/groundtruth/conf/places.json`: neighbourhood bounding boxes resolved once via OSM Nominatim (ODbL, © OpenStreetMap

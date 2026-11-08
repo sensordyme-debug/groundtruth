@@ -13,7 +13,7 @@ type Msg =
   | { id: string; role: "assistant"; text: string; steps: StepLine[]; secs: string; card: Card | null; pills: string[];
       pick?: Tile[]; query?: string; showDetails?: boolean };
 
-const LANDING_BG = cropUrl([-80.9045, 35.4535, -80.8745, 35.4735], 2022, 640);
+const LANDING_BG = cropUrl([-80.8830, 35.4955, -80.8710, 35.5030], 2022, 640);  // Lake Norman shore, real NAIP
 let uid = 0;
 const nextId = (p: string) => `${p}${++uid}`;
 
@@ -69,7 +69,6 @@ export default function App() {
     const docks = all.filter((f) => f.properties?.kind === "dock");
     const links = all.filter((f) => f.properties?.kind === "dock_link");
     const heat = r.actions.some((a) => a.action === "heatmap");
-    const fly = r.actions.find((a) => a.action === "fly_to" && a.bbox);
     if (r.status === "declined" || r.ask === "pick") return;
     if (heat) {
       shown.current = null;
@@ -86,13 +85,12 @@ export default function App() {
       // a filter: keep the previous set on screen, fade the non-matches to .16 and pulse the matches twice
       m.setResults({ features: prev.features, docks, links, look: "rings", matches: ids, pulse: true });
       shown.current = { ...prev, docks, links };
-      if (!fly) m.flyToBbox(bboxOf(feats), 56, 16.2);
+      m.flyToCenter(densest(feats), 14.6);
     } else {
       m.setResults({ features: feats, docks, links, look: "rings", pulse: false });
       shown.current = { ids, features: feats, docks, links };
-      if (!fly) m.flyToBbox(bboxOf(feats), 56, 16.2);
+      if (feats.length > 12) m.flyToCenter(densest(feats), 14.3); else m.flyToBbox(bboxOf(feats), 80, 16.2);
     }
-    if (fly?.bbox) m.flyToBbox(fly.bbox, 40, 15);
     setLegend({ on: true, docks: docks.length > 0, label: legendLabel(r) });
   }, []);
 
@@ -102,7 +100,7 @@ export default function App() {
     try {
       const r = await agentRun(text, c);
       lastResp.current = r;
-      const { lines, secs } = stepLines(r);
+      const { lines, secs } = stepLines(r, performance.now() - t0.current);
       let pick: Tile[] | undefined;
       if (r.ask === "pick") {
         const pc = r.steps.find((s) => s.tool === "pick_candidates")?.envelope;
@@ -429,6 +427,19 @@ function legendLabel(r: AgentResponse): string {
   const p = r.plan ?? {};
   if (p.target_kind === "derived" || p.concept === "swimming_pool") return "Pools";
   return String(p.concept_query ?? p.target ?? "Results").replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase());
+}
+
+/** The result with the most other results within ~700 m (ties → the first): where the camera goes. */
+function densest(fs: Feature[]): [number, number] {
+  const pts = fs.map((f) => centroid(focusGeom(f)));
+  let best = pts[0], bn = -1;
+  for (const p of pts) {
+    const k = Math.cos((p[1] * Math.PI) / 180);
+    let n = 0;
+    for (const q of pts) if (((q[0] - p[0]) * k) ** 2 + (q[1] - p[1]) ** 2 < 0.0063 ** 2) n++;
+    if (n > bn) { bn = n; best = p; }
+  }
+  return best;
 }
 
 function bboxOf(fs: Feature[]): number[] {

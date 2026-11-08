@@ -227,6 +227,11 @@ export class GtMap {
     this.map.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding, maxZoom, duration: reduce ? 0 : 1600, easing: CAMERA_EASE, essential: true });
   }
 
+  flyToCenter(c: [number, number], zoom: number) {
+    const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    this.map.flyTo({ center: c, zoom, duration: reduce ? 0 : 1600, easing: CAMERA_EASE, essential: true });
+  }
+
   flyToFeature(f: Feature, zoom = 18.2) {
     const c = centroid(focusGeom(f));
     const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;

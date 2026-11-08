@@ -52,3 +52,4 @@ button:focus-visible, textarea:focus-visible, input:focus-visible { outline: 2px
   .gt-zoom { display: none !important; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+.gt-ta:focus-visible { outline: none; }  /* the composer card is the focus target */
