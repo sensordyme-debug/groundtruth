@@ -98,3 +98,17 @@
   .gt-rail { width: 48px; }
   .gt-drawer { left: 48px; }
 }
+
+/* provenance chips: what kind of claim a finding is (an AI prediction never looks like a verified fact) */
+.gt-nature { display: inline-block; margin-left: 8px; padding: 1px 7px; border-radius: 999px; font-size: 11px; line-height: 16px; vertical-align: 1px; border: 1px solid var(--hairline); color: var(--muted); background: #fff; white-space: nowrap; }
+.gt-nature-model_prediction { border-style: dashed; border-color: #b9b6af; }
+.gt-nature-computed { border-color: #cfcdc8; color: var(--ink); }
+.gt-nature-provider_reported { background: var(--canvas); }
+.gt-nature-human_verified { background: var(--ink); border-color: var(--ink); color: #fff; }
+.gt-nature-gap { color: var(--muted-body); border-color: var(--hairline); background: transparent; font-style: italic; }
+.gt-nature-assumption { border-style: dotted; }
+.gt-provbadge { align-self: flex-start; font-size: 12px; padding: 2px 9px; border-radius: 999px; border: 1px dashed #b9b6af; color: var(--muted); }
+.gt-provbadge-human { border: 1px solid var(--ink); background: var(--ink); color: #fff; }
+
+.gt-srcline { font-size: 11px; color: var(--muted-body); line-height: 1.4; }
+.gt-attrpop { border-radius: 12px; padding: 10px 12px; font-size: 11px; line-height: 1.5; color: #5c5c5c; max-width: 440px; max-height: 50vh; overflow-y: auto; }

@@ -197,7 +197,7 @@ class Evidence(BaseModel):
 class Finding(BaseModel):
     id: str
     statement: str
-    nature: Literal["observed", "computed", "model_prediction", "inference", "gap"]
+    nature: Literal["observed", "computed", "model_prediction", "provider_reported", "human_verified", "inference", "assumption", "gap"]
     strength: Strength
     why_strength: str
     evidence_ids: list[str]
@@ -503,7 +503,7 @@ def run(inv: Investigation, engine, prev: Investigation | None = None) -> Invest
         t0 = time.perf_counter()
         try:
             src = _input_of(s, plan, feats, prev)
-            env, out = _exec(s, engine, src, inv, envs, feats)
+            env, out = _with_timeout(lambda: _exec(s, engine, src, inv, envs, feats), lim["step_timeout_s"], s.op)
             envs[s.id] = env
             if out is not None:
                 feats[s.id] = out[: lim["max_features_kept"]]
@@ -532,6 +532,31 @@ def run(inv: Investigation, engine, prev: Investigation | None = None) -> Invest
     _CANCEL.discard(inv.id)
     save(inv)
     return inv
+
+
+class StepTimeout(RuntimeError):
+    pass
+
+
+def _with_timeout(fn: Callable[[], Any], seconds: float, op: str):
+    """Run one step with a hard wait limit. Python can't kill a thread, so an overrunning tool keeps running in the
+    background, but the investigation stops waiting: the step is marked failed ("timed out") and its dependents are
+    blocked. Its late result is discarded. Generous by default (conf limits.step_timeout_s)."""
+    box: dict[str, Any] = {}
+
+    def work():
+        try:
+            box["v"] = fn()
+        except BaseException as e:  # noqa: BLE001
+            box["e"] = e
+    th = threading.Thread(target=work, daemon=True, name=f"step-{op}")
+    th.start()
+    th.join(seconds)
+    if th.is_alive():
+        raise StepTimeout(f"timed out after {seconds:g} s (the tool kept running in the background; its result is discarded)")
+    if "e" in box:
+        raise box["e"]
+    return box["v"]
 
 
 def _input_of(s: PlanStep, plan: InvestigationPlan, feats, prev) -> list[dict[str, Any]] | None:
@@ -649,6 +674,14 @@ def _exec(s: PlanStep, eng, src, inv: Investigation, envs, feats):
                     strength="moderate", confidence_note="listed places (points of interest), not seen in imagery")
         return env, fs
     if s.op == "filter":
+        # denominator integrity: for a MEASURED condition, measure every input first so the step can report
+        # passing / failing / unknown separately (unknown is never counted as passing or failing)
+        measured = next(((k, *_MEASURED[k]) for k in a.where if k in _MEASURED), None)
+        if measured and any(f["properties"].get(measured[1]) is None for f in src
+                            if f["properties"].get("kind") not in ("dock", "dock_link")):
+            ann = eng.explain(_fc(src), facts=[measured[2]])
+            if ann.status != "declined":
+                src = ann.result.geojson["features"]
         env = eng.filter(_fc(src), a.where)
         if env.status == "declined":
             return env, None
@@ -658,16 +691,27 @@ def _exec(s: PlanStep, eng, src, inv: Investigation, envs, feats):
         if "has_dock" in json.dumps(inv.plan.steps[0].args) or any(f["properties"].get("kind") == "dock" for f in src):
             keep = {_fid(f) for f in prim_out}
             fs = [f for f in fs if f["properties"].get("kind") not in ("dock", "dock_link") or str(f["properties"].get("house_id")) in keep]
-        s.detail = f"{len(prim_out)} of {len(prim_in)}"
-        risk = env.result.metrics.get("risk") or {}
         kind, ev_kind, srcname = _filter_kind(a.where)
-        unmeasured = sum(int(v) for k, v in risk.items() if "unmeasured" in k or "unavailable" in k) if isinstance(risk, dict) else 0
         lims = list(env.limits)[-4:]
         strength = "strong" if ev_kind == "spatial_intersection" else "moderate"
-        if unmeasured:
-            lims.append(f"{unmeasured} could not be measured for this condition (never counted as passing)")
-        _add_ev(inv, s, ev_kind, f"{len(prim_out)} of {len(prim_in)} {kind}.", source=_src(env, srcname), method=env.method[:300],
-                measurement={"kept": len(prim_out), "of": len(prim_in), **({"unmeasured": unmeasured} if unmeasured else {})},
+        if measured:
+            prop, label = measured[1], measured[3]
+            known = [f for f in prim_in if f["properties"].get(prop) is not None]
+            unknown = len(prim_in) - len(known)
+            passing, failing = len(prim_out), len(known) - len(prim_out)
+            s.detail = f"{passing} pass · {failing} fail · {unknown} unknown (of {len(prim_in)})"
+            stmt = (f"{passing} of the {len(known)} with a known {label} {kind}"
+                    + (f"; {unknown} of {len(prim_in)} have no {label} and stay unknown." if unknown else "."))
+            meas = {"total": len(prim_in), "known": len(known), "passing": passing, "failing": failing, "unknown": unknown,
+                    "kept": passing, "of": len(prim_in)}
+            if unknown:
+                lims.append(f"{unknown} have no {label}: they are neither counted as passing nor as failing")
+        else:
+            nc = sum(1 for f in prim_in if f["properties"].get("flood_covered") is False) if "in_flood_zone" in a.where else 0
+            s.detail = f"{len(prim_out)} of {len(prim_in)}" + (f" ({nc} outside the mapped area: unknown)" if nc else "")
+            stmt = f"{len(prim_out)} of {len(prim_in)} {kind}." + (f" {nc} lie outside FEMA's mapped area: unknown." if nc else "")
+            meas = {"kept": len(prim_out), "of": len(prim_in), **({"unknown": nc} if nc else {})}
+        _add_ev(inv, s, ev_kind, stmt, source=_src(env, srcname), method=env.method[:300], measurement=meas,
                 feature_ids=[_fid(f) for f in prim_out], strength=strength,
                 confidence_note="a geometric test against the published layer" if ev_kind == "spatial_intersection" else
                 "measured from lidar / layers; see each result's facts", limitations=lims)
@@ -755,6 +799,16 @@ def _exec(s: PlanStep, eng, src, inv: Investigation, envs, feats):
     raise ValueError(f"no executor for {s.op}")
 
 
+# measured predicates: where key → (feature property, explain fact, words)
+_MEASURED = {
+    "elevation_above_flood_m": ("elev_above_bfe_m", "elevation", "height above the base flood elevation"),
+    "within_m_of_shore": ("shore_dist_m", "shore", "shore distance"),
+    "canopy_over_pct": ("canopy_over_pct", "canopy", "canopy measurement"),
+    "slope_deg": ("slope_deg", "slope", "slope measurement"),
+    "height_m": ("height_m", "height", "height"),
+}
+
+
 def _filter_kind(where: dict[str, Any]) -> tuple[str, str, str]:
     if "in_flood_zone" in where:
         k = (where["in_flood_zone"] or {}).get("kind", "any") if isinstance(where["in_flood_zone"], dict) else where["in_flood_zone"]
@@ -821,7 +875,9 @@ def conclude(inv: Investigation, feats, envs) -> None:
         head = counted[-1]
         sup = chain[: chain.index(head) + 1]
         weakest = min(sup, key=lambda e: _RANK[e.strength])
-        findings.append(Finding(id="f1", statement=head.statement, nature="computed" if head.kind != "detection" else "model_prediction",
+        # a count computed over AI-detected objects is still an AI prediction (never shown as a plain fact)
+        on_model = any(e.kind == "detection" and "naip" in (e.source.get("name", "").lower()) for e in sup)
+        findings.append(Finding(id="f1", statement=head.statement, nature="model_prediction" if on_model or head.kind == "detection" else "computed",
                                 strength=weakest.strength, evidence_ids=[e.id for e in sup], feature_ids=head.feature_ids[:2000],
                                 why_strength=_why_strength(weakest)))
     for e in chain:

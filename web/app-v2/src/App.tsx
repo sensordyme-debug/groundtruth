@@ -83,6 +83,7 @@ export default function App() {
   const [year, setYear] = useState<number>(prefs.year);
   const [layersOpen, setLayersOpen] = useState(false);
   const [attrOpen, setAttrOpen] = useState(false);
+  const [srcs, setSrcs] = useState<any[]>([]);
   const [lyr, setLyr] = useState({ flood: false, hwy: false, bldg3d: false });
   const [legend, setLegend] = useState<{ on: boolean; docks: boolean; label: string }>({ on: false, docks: false, label: "Pools" });
   const [pointOn, setPointOn] = useState(false);
@@ -110,6 +111,7 @@ export default function App() {
   useEffect(() => { const t = setTimeout(refreshLists, 150); return () => clearTimeout(t); }, [refreshLists]);
   useEffect(() => {
     fetch("/api/v1/places").then((r) => r.json()).then((d) => setPlaces(d.places ?? {})).catch(() => {});
+    fetch("/api/v1/sources").then((r) => r.json()).then((d) => setSrcs(Array.isArray(d.sources) ? d.sources : [])).catch(() => {});
     if (!mapEl.current || gm.current) return;
     gm.current = new GtMap(mapEl.current);
     (window as any).__gt = { ready: true };
@@ -792,8 +794,11 @@ export default function App() {
             {layersOpen && (
               <div className="gt-frost gt-in" style={{ position: "absolute", top: 62, left: 16, borderRadius: 14, padding: 6, width: 220, zIndex: 3 }}>
                 {([["flood", "Flood zones"], ["hwy", "Highways"], ["bldg3d", "3D buildings"]] as const).map(([k, label]) => (
-                  <label key={k} className="gt-check"><input type="checkbox" checked={lyr[k]}
-                    onChange={() => { const on = !lyr[k]; setLyr((o) => ({ ...o, [k]: on })); void gm.current?.setLayer(k, on); }} />{label}</label>))}
+                  <label key={k} className="gt-check" style={{ alignItems: "flex-start" }}><input type="checkbox" checked={lyr[k]} style={{ marginTop: 2 }}
+                    onChange={() => { const on = !lyr[k]; setLyr((o) => ({ ...o, [k]: on })); void gm.current?.setLayer(k, on); }} />
+                    <span style={{ display: "flex", flexDirection: "column" }}>{label}
+                      <span className="gt-srcline" data-testid="layer-source">{srcLine(srcs, k === "flood" ? "fema" : k === "hwy" ? "openstreetmap" : "overture")}</span></span></label>))}
+                <div className="gt-srcline" style={{ padding: "6px 10px 4px" }} data-testid="imagery-source">Imagery: {srcLine(srcs, year === 2020 ? "naip 2020" : "naip 2022")}</div>
               </div>)}
 
             <div className="gt-frost" role="status" style={{ position: "absolute", top: 16, left: "50%", transform: "translateX(-50%)", borderRadius: 999,
@@ -813,8 +818,12 @@ export default function App() {
 
             <div style={{ position: "absolute", right: 72, bottom: 16, zIndex: 3, display: "flex", alignItems: "flex-end", gap: 8, flexDirection: "row-reverse" }}>
               <button className="gt-frost gt-attr" onClick={() => setAttrOpen((o) => !o)} aria-label="Map data sources" aria-expanded={attrOpen}>i</button>
-              {attrOpen && <div className="gt-frost gt-in" style={{ borderRadius: 10, padding: "6px 10px", fontSize: 11, color: "#5c5c5c", maxWidth: 420 }}>
-                Imagery: NAIP (USDA) · © OpenStreetMap contributors · FEMA NFHL · Overture Maps · USGS 3DEP · MapLibre</div>}
+              {attrOpen && <div className="gt-frost gt-in gt-attrpop" data-testid="sources-panel">
+                <div style={{ fontWeight: 500, color: "#191919", marginBottom: 4 }}>Data sources</div>
+                {srcs.length ? srcs.filter((x) => !String(x.provider ?? "").match(/foursquare|yelp|google/i) || x.freshness_status).slice(0, 14).map((x) => (
+                  <div key={x.source_id ?? x.dataset_name}>{x.dataset_name}{x.acquisition_date ? ` · acquired ${x.acquisition_date}` : ""}{x.freshness_status ? ` · ${x.freshness_status}` : ""}{x.license ? ` · ${x.license}` : ""}</div>))
+                  : <div>NAIP (USDA) · © OpenStreetMap contributors · FEMA NFHL · Overture Maps · USGS 3DEP · MapLibre</div>}
+              </div>}
             </div>
             <div className="gt-frost gt-zoom" style={{ position: "absolute", right: 16, bottom: 16, borderRadius: 14, display: "flex", flexDirection: "column", padding: 3, zIndex: 3 }}>
               <button className="gt-icon" onClick={() => gm.current?.zoom(1)} aria-label="Zoom in"><I.Plus14 /></button>
@@ -867,6 +876,9 @@ export default function App() {
                   Compare 2020 and 2022
                   <input className="gt-range" type="range" min={0} max={100} value={swipe} onChange={(e) => setSwipe(Number(e.target.value))} />
                 </label>
+                {selEv?.verdict === "confirm"
+                  ? <span className="gt-provbadge gt-provbadge-human" data-testid="prov-badge">Human-verified</span>
+                  : <span className="gt-provbadge" data-testid="prov-badge">{sel.properties?.provenance === "provider_reported" ? "Provider data · not verified here" : "AI prediction · not human-verified"}</span>}
                 {sel.properties?.why && typeof sel.properties.why === "string" && <div className="gt-why" data-testid="why">{units(String(sel.properties.why), prefs.units)}</div>}
                 {selEv && (
                   <div className="gt-selev" data-testid="feature-evidence">
@@ -1068,4 +1080,13 @@ function invTitle(objective: string, inv: Inv): string {
   const cond = inv.plan?.constraints?.[0];
   if (place && what) return `${place} · ${what}${cond && /flood/.test(cond) ? " · flood" : ""}`;
   return objective.length > 60 ? `${objective.slice(0, 57)}…` : objective;
+}
+
+
+/** "FEMA NFHL · effective 2024-… · current" from the source registry (empty when the registry has no match). */
+function srcLine(srcs: any[], key: string): string {
+  const k = key.toLowerCase();
+  const x = srcs.find((r) => `${r.source_id ?? ""} ${r.dataset_name ?? ""} ${r.provider ?? ""}`.toLowerCase().includes(k));
+  if (!x) return "";
+  return [x.provider ?? x.dataset_name, x.acquisition_date ? `acquired ${x.acquisition_date}` : null, x.freshness_status].filter(Boolean).join(" · ");
 }

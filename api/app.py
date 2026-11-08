@@ -610,12 +610,19 @@ def ui_session(sid: str) -> Response:  # deep link to a saved session: the app r
 
 
 from api.investigations_api import router as _inv_router  # noqa: E402
+from api.meta_api import router as _meta_router  # noqa: E402
 from api.point_api import router as _point_router  # noqa: E402
 from api.sessions import router as _sessions_router  # noqa: E402
 
 app.include_router(_sessions_router)
 app.include_router(_point_router)
 app.include_router(_inv_router)
+app.include_router(_meta_router)
+for _mod in ("api.places_api", "api.validation_api"):  # optional routers (present once built); a missing one is skipped
+    try:
+        app.include_router(__import__(_mod, fromlist=["router"]).router)
+    except ImportError as _e:
+        print(f"[groundtruth] optional router {_mod} not loaded: {_e}")
 
 
 @app.get("/v2assets/{path:path}")

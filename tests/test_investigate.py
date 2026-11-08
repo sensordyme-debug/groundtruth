@@ -140,3 +140,52 @@ def test_declined_before_planning(tmp_path, monkeypatch):
     inv = I.start("who owns these homes", {}, lambda y: FakeEngine(), lambda t: "no people data" if _people(t) else None,
                   background=False)
     assert inv.status == "declined" and inv.plan is None
+
+
+class ElevEngine(FakeEngine):
+    """Filter on elevation: 3 known (0.5, 0.5, 2.0 m), 1 unknown; < 1 m keeps 2."""
+
+    def explain(self, gj, facts=(), label=None, unit="results", **kw):
+        vals = {"h0": 0.5, "h1": 2.0, "h2": 0.5, "h3": None, "h4": None}
+        fs = [dict(f, properties={**f["properties"], "elev_above_bfe_m": vals.get(f["properties"]["id"])}) for f in gj["features"]]
+        return Envelope(tool="explain", version="x", status="ok", result=Result(
+            geojson={"type": "FeatureCollection", "features": fs}, metrics={"insights": []}),
+            sources=[Source(name="USGS 3DEP lidar", url="u", date="2016", licence="PD")])
+
+    def filter(self, gj, where):
+        if "elevation_above_flood_m" in where:
+            lt = where["elevation_above_flood_m"]["lt"]
+            fs = [f for f in gj["features"] if f["properties"].get("elev_above_bfe_m") is not None and f["properties"]["elev_above_bfe_m"] < lt]
+            return Envelope(tool="filter", version="x", status="ok", result=Result(
+                geojson={"type": "FeatureCollection", "features": fs}, metrics={}),
+                sources=[Source(name="USGS 3DEP lidar", url="u", date="2016", licence="PD")])
+        return super().filter(gj, where)
+
+
+def test_denominator_integrity_unknown_stays_unknown(tmp_path, monkeypatch):
+    monkeypatch.setattr(I, "store_dir", lambda: tmp_path)
+    monkeypatch.setattr(I, "coverage", lambda e, a: {"flood maps": {"covered": True, "why": ""}})
+    inv = I.start("homes with pools in Lake Norman less than 1 m above the flood elevation", {}, lambda y: ElevEngine(),
+                  lambda t: None, background=False)
+    ev = next(e for e in inv.evidence if e.measurement.get("passing") is not None)
+    # 5 homes: h0 0.5, h1 2.0, h2 0.5 known; h3, h4 unknown → 2 pass, 1 fails, 2 unknown
+    assert ev.measurement == {"total": 5, "known": 3, "passing": 2, "failing": 1, "unknown": 2, "kept": 2, "of": 5}
+    assert "2 of the 3 with a known" in ev.statement and "2 of 5 have no" in ev.statement
+
+
+def test_step_timeout_blocks_dependents(tmp_path, monkeypatch):
+    import time as _t
+
+    class Slow(FakeEngine):
+        def find_derived(self, *a, **k):
+            _t.sleep(2)
+            return super().find_derived(*a, **k)
+
+    monkeypatch.setattr(I, "store_dir", lambda: tmp_path)
+    monkeypatch.setattr(I, "coverage", lambda e, a: {})
+    c = I.conf()
+    monkeypatch.setattr(I, "conf", lambda: {**c, "limits": {**c["limits"], "step_timeout_s": 0.3}})
+    inv = I.start("homes with pools in Lake Norman in the 100-year flood zone", {}, lambda y: Slow(), lambda t: None, background=False)
+    st = {s.op: s for s in inv.plan.steps}
+    assert st["find_derived"].status == "failed" and "timed out" in st["find_derived"].error
+    assert st["filter"].status == "blocked" and inv.status in ("partial", "failed")

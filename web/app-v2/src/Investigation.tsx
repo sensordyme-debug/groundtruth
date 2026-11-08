@@ -24,8 +24,14 @@ const STRENGTH: Record<string, [string, string]> = {
   weak: ["Weak", "relies on a detector whose precision isn't measured for this data"],
   insufficient: ["Gap", "the data needed is missing"],
 };
-const NATURE: Record<string, string> = { computed: "Computed", model_prediction: "Model prediction", observed: "Observed",
-  inference: "Inference", gap: "Data gap" };
+const NATURE: Record<string, string> = { computed: "Computed", model_prediction: "AI prediction", observed: "Observed",
+  provider_reported: "Provider data", human_verified: "Human-verified", inference: "Inference", assumption: "Assumption",
+  gap: "Data gap" };
+
+/** A finding's provenance, always visible: an AI prediction never looks like a verified fact. */
+export function NatureChip({ n }: { n: string }) {
+  return <span className={`gt-nature gt-nature-${n}`} data-testid="nature">{NATURE[n] ?? n}</span>;
+}
 const I = { size: 14, strokeWidth: 1.75 } as const;
 
 export function StepIcon({ s }: { s: string }) {
@@ -103,7 +109,7 @@ export default function InvestigationBlock({ inv, latest, busy, fmtU, onShow, on
               <div key={f.id} className={`gt-finding gt-finding-${f.strength}`} data-testid="finding">
                 <button className="gt-finding-head" onClick={() => setOpenF(open ? null : f.id)} aria-expanded={open}>
                   <Bars s={f.strength} />
-                  <span className="gt-finding-text">{fmtU(f.statement)}</span>
+                  <span className="gt-finding-text">{fmtU(f.statement)}<NatureChip n={f.nature} /></span>
                   <ChevronRight size={13} strokeWidth={1.75} style={{ flex: "none", color: "#8b8b88", transform: `rotate(${open ? 90 : 0}deg)`, transition: "transform .18s ease" }} />
                 </button>
                 {open && (
