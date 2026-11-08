@@ -36,6 +36,10 @@ class AreaArgs(BaseModel):
     bbox: list[float] | None = Field(None, min_length=4, max_length=4)
     geojson: dict[str, Any] | None = None
     label: str | None = None
+    kind: str | None = None  # county | city | municipality | neighbourhood | zip | radius | polygon | water_body | ...
+    source: str | None = None
+    source_date: str | None = None
+    approximate: bool = False
 
     @model_validator(mode="after")
     def _one(self):
@@ -253,11 +257,45 @@ def compile_plan(objective: str, context: dict[str, Any] | None = None, prev: In
     follow = prev is not None and prev.result is not None and (_has(t, W["follow_up"]) or bool(ctx.get("follow_up")))
     p = base_plan or P.parse(objective)
 
-    # ---- scope: the composer's area chip > a place named in the objective > the previous investigation's scope
+    # ---- scope: a place named in the objective (TEXT WINS over the map's area chip) > the area chip > the previous
+    # investigation's scope. The geography resolver (geography.py) turns county / city / town / ZIP / radius / lake
+    # mentions into exact boundaries; it never guesses ("Mecklenburg County" can no longer fall back to a neighbourhood).
     area = ctx.get("area") or {}
     scope: dict[str, Any] | None = None
-    if p.place:
+    geo_note: list[str] = []
+    res = None
+    try:
+        from groundtruth import geography as G
+        res = G.resolve(objective)  # text only: the map's area is applied below, after the text
+    except Exception:  # noqa: BLE001 (boundary data missing: fall back to the planner's place names)
+        res = None
+    if res is not None and not res.resolved and "outside" in (res.reason or "").lower():
+        return None, {"question": f"{res.reason[:1].upper()}{res.reason[1:]}. Groundtruth covers Mecklenburg County only.",
+                      "suggestions": [f"in {x}" for x in c["suggest_places"]], "reason": "outside coverage"}
+    # the rules planner only strips the 18 place names it knows: re-read the target with the resolved place removed
+    if res is not None and res.resolved and res.matched_text and not p.place and base_plan is None:
+        rest = re.sub(r"\b(in|within|near|around|across|inside|of)?\s*" + re.escape(res.matched_text) + r"\b", " ", objective,
+                      flags=re.IGNORECASE)
+        p2 = P.parse(rest)
+        if p2.target_kind in ("concept", "place_category", "buildings", "derived") or (p2.target_kind and p.target_kind == "open"):
+            p = p2
+    if p.place and not (res is not None and res.resolved and res.kind in ("county", "city", "municipality", "zip", "radius")
+                        and (res.name or "").lower() != p.place.lower()):
         scope = {"place": p.place, "label": p.place}
+        # the same place with an exact boundary (a town, a mapped neighbourhood): keep the name for the engine's
+        # per-place data, add the polygon so results are clipped to it (never the water body: homes are on land)
+        if (res is not None and res.resolved and not res.approximate and res.kind in ("municipality", "city", "neighbourhood")
+                and (res.name or "").lower() == p.place.lower()):
+            scope.update(geojson=res.geometry, bbox=list(res.bbox), kind=res.kind, source=res.source, source_date=res.source_date)
+    elif res is not None and res.resolved and res.kind not in ("address", "point"):
+        scope = {"geojson": res.geometry, "bbox": list(res.bbox), "label": res.name, "kind": res.kind,
+                 "source": res.source, "source_date": res.source_date, "approximate": bool(res.approximate)}
+        if res.ambiguous:
+            alts = ", ".join(a.get("name") or a.get("kind") or "?" for a in res.alternatives[:3])
+            geo_note.append(f"“{res.matched_text or res.name}” can be read more than one way; I used {res.name} "
+                            f"({(res.kind or '').replace('_', ' ')})" + (f"; other readings: {alts}" if alts else ""))
+        if res.approximate:
+            geo_note.append(f"{res.name}'s boundary is approximate (a bounding box)")
     elif area.get("place"):
         scope = {"place": area["place"], "label": area.get("label") or area["place"]}
     elif area.get("bbox") or area.get("geojson"):
@@ -392,6 +430,7 @@ def compile_plan(objective: str, context: dict[str, Any] | None = None, prev: In
             if s.op in _INPUT_OPS and not s.depends_on:
                 s.depends_on = []
         limitations.append("Starts from the previous investigation's results")
+    limitations += geo_note
     try:
         plan = InvestigationPlan(objective=objective, scope=scope, targets=targets, constraints=[w for _, _, w in cons],
                                  time={"imagery": 2022, "compare": 2020 if any(s.op == "compare_years" for s in steps) else None},
@@ -601,12 +640,14 @@ def _exec(s: PlanStep, eng, src, inv: Investigation, envs, feats):
             bb = list(shape(a.geojson).bounds)
         if not bb:
             raise ValueError(f"unknown area {a.place!r}")
-        s.detail = f"{a.label or a.place or 'area'}: {_km2(bb):.1f} km²"
-        _add_ev(inv, s, "scope", f"The search is bounded by {a.label or a.place or 'the drawn area'} ({_km2(bb):.1f} km²).",
-                source={"name": "Groundtruth places (OSM Nominatim boundaries, ODbL)" if a.place else "Drawn by the user",
-                        "url": "", "date": "", "licence": "ODbL" if a.place else ""},
-                measurement={"bbox": [round(v, 6) for v in bb], "area_km2": round(_km2(bb), 2)}, strength="strong",
-                confidence_note="a rectangle around the named area; edges are approximate")
+        km2 = _km2_geom(a.geojson) if a.geojson else _km2(bb)
+        what = f"{a.label or a.place or 'the drawn area'}" + (f" ({a.kind.replace('_', ' ')})" if a.kind else "")
+        s.detail = f"{what}: {km2:.1f} km²" + (" · approximate boundary" if a.approximate else "")
+        _add_ev(inv, s, "scope", f"The search is bounded by {what}, {km2:.1f} km²" + (" (approximate boundary)." if a.approximate else "."),
+                source={"name": a.source or ("Groundtruth places (OSM Nominatim boundaries, ODbL)" if a.place else "Drawn by the user"),
+                        "url": "", "date": a.source_date or "", "licence": "ODbL / public domain (see data/boundaries/v1/meta.json)" if a.source else ("ODbL" if a.place else "")},
+                measurement={"bbox": [round(v, 6) for v in bb], "area_km2": round(km2, 2)}, strength="moderate" if a.approximate or not a.geojson else "strong",
+                confidence_note="the exact boundary polygon" if a.geojson and not a.approximate else "a rectangle around the named area; edges are approximate")
         return None, None
     if s.op == "check_coverage":
         cov = coverage(eng, a)
@@ -653,7 +694,7 @@ def _exec(s: PlanStep, eng, src, inv: Investigation, envs, feats):
                            bbox=a.bbox, concept=a.concept, soft_exclude=neg)
         if env.status == "declined":
             return env, None
-        fs = env.result.geojson["features"]
+        fs = _clip_to_scope(inv, s, env.result.geojson["features"], a.query)
         m = env.result.metrics
         s.detail = f"{len(fs)} {a.query}"
         dq = conf()["detection_quality"].get(a.concept, {})
@@ -675,6 +716,8 @@ def _exec(s: PlanStep, eng, src, inv: Investigation, envs, feats):
         env = eng.find_buildings(a.kind, bbox=a.bbox, place=a.place, min_height_m=a.min_height_m)
         fs = env.result.geojson["features"] if env.status != "declined" else None
         if fs is not None:
+            fs = _clip_to_scope(inv, s, fs, "buildings")
+        if fs is not None:
             s.detail = f"{len(fs)} buildings"
             _add_ev(inv, s, "detection", f"{len(fs)} {a.kind if a.kind != 'building' else 'buildings'} in Overture footprints"
                     + (f" taller than {a.min_height_m:g} m" if a.min_height_m else "") + ".", source=_src(env, "Overture"),
@@ -685,6 +728,8 @@ def _exec(s: PlanStep, eng, src, inv: Investigation, envs, feats):
     if s.op == "find_places":
         env = eng.find_place(a.query, bbox=a.bbox, place=a.place)
         fs = env.result.geojson["features"] if env.status != "declined" else None
+        if fs is not None:
+            fs = _clip_to_scope(inv, s, fs, a.query)
         if fs is not None:
             s.detail = f"{len(fs)} places"
             _add_ev(inv, s, "detection", f"{len(fs)} {a.query} listed in Overture places.", source=_src(env, "Overture"),
@@ -1008,6 +1053,31 @@ def _src(env, prefer: str) -> dict[str, Any]:
 def _fid(f: dict[str, Any]) -> str:
     p = f.get("properties") or {}
     return str(p.get("id") or p.get("example") or f.get("id") or "")
+
+
+def _clip_to_scope(inv: Investigation, s: PlanStep, fs: list[dict[str, Any]], what: str) -> list[dict[str, Any]]:
+    """Tools search a bounding box; keep only results inside the exact boundary (representative point), and record it."""
+    g = (inv.plan.scope or {}).get("geojson") if inv.plan else None
+    if not g or not fs:
+        return fs
+    from shapely.geometry import shape
+    from shapely.prepared import prep
+    poly = prep(shape(g))
+    kept = [f for f in fs if f.get("geometry") and poly.covers(shape(f["geometry"]).representative_point())]
+    if len(kept) != len(fs):
+        _add_ev(inv, s, "spatial_intersection", f"{len(kept)} of {len(fs)} {what} found in the bounding box lie inside the "
+                f"{inv.plan.scope.get('label')} boundary; the rest were dropped.", method="point-in-polygon (representative point)",
+                measurement={"inside": len(kept), "in_bbox": len(fs)}, feature_ids=[], strength="strong",
+                source={"name": inv.plan.scope.get("source") or "boundary", "url": "", "date": inv.plan.scope.get("source_date") or "", "licence": ""},
+                confidence_note="exact boundary polygon")
+    return kept
+
+
+def _km2_geom(g) -> float:
+    from shapely.geometry import shape
+
+    from groundtruth.geo import to_measure
+    return to_measure(shape(g)).area / 1e6
 
 
 def _km2(bb) -> float:

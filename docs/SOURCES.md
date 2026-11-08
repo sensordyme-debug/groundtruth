@@ -116,3 +116,11 @@ use, but nothing below is in use yet unless it is listed above. Each item's attr
 **Decision (Monish, 2026-11-08):** Grounding DINO and Florence-2 are accepted for Groundtruth: weights Apache/MIT;
 training data partly research-only; legal review required before ORYN commercial use. PDAL is not used (laspy +
 lazrs read the 3DEP EPT directly).
+
+### Boundaries and validation (2026-11-08, intelligence branch)
+| Data | Licence | Use |
+|---|---|---|
+| OSM administrative boundaries (admin_level 8) + neighbourhood polygons, from the local NC .osm.pbf | ODbL 1.0 (© OpenStreetMap contributors) | `data/boundaries/v1` municipalities (Charlotte, Huntersville, Matthews, Mint Hill, Pineville) and 114 neighbourhoods |
+| US Census TIGER/Line places (Cornelius, Davidson) and ZCTA 2020 (36 ZIP areas, via TIGERweb) | Public domain (US Census Bureau) | `data/boundaries/v1` |
+| Validation samples (`data/validation/v1`) | Derived from the engine's own predictions over NAIP (public domain) + Overture buildings (ODbL / CDLA) | human review only; never written to `data/labels/` |
+| Place providers (Foursquare, Yelp, Google) | Provider terms; see docs/compliance/API_TERMS_REVIEW.md | live API, not cached datasets; Google disabled by default |

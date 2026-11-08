@@ -1,5 +1,5 @@
 {
-  "_doc": "Which version folder of each rebuildable data product the code reads: data/<kind>/<version>/. Rebuilds ALWAYS write a NEW version (v2, v3 …) and switch here only after A/B + demo_check; the versions in data/DEMO_MANIFEST.json (demo-final) are never modified or deleted. The chip index is versioned by its INDEX_VERSION folder under data/precompute/.",
+  "_doc": "Which version folder of each rebuildable data product the code reads: data/<kind>/<version>/. Rebuilds ALWAYS write a NEW version (v2, v3 \u2026) and switch here only after A/B + demo_check; the versions in data/DEMO_MANIFEST.json (demo-final) are never modified or deleted. The chip index is versioned by its INDEX_VERSION folder under data/precompute/.",
   "dense": "v1",
   "lidar": "v2",
   "tiles": "v1",
@@ -7,5 +7,7 @@
   "inventory": "v1",
   "openvocab_cache": "v1",
   "derived": "v1",
-  "risk": "v1"
+  "risk": "v1",
+  "boundaries": "v1",
+  "validation": "v1"
 }

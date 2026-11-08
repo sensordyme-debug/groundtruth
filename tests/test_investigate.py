@@ -189,3 +189,30 @@ def test_step_timeout_blocks_dependents(tmp_path, monkeypatch):
     st = {s.op: s for s in inv.plan.steps}
     assert st["find_derived"].status == "failed" and "timed out" in st["find_derived"].error
     assert st["filter"].status == "blocked" and inv.status in ("partial", "failed")
+
+
+# ---- geography in plans (needs data/boundaries/v1; skipped without it)
+def _geo_ready():
+    try:
+        from groundtruth import geography as G
+        return G.resolve("Mecklenburg County").resolved
+    except Exception:
+        return False
+
+
+@pytest.mark.skipif(not _geo_ready(), reason="boundary data not built")
+def test_county_never_falls_back_to_the_map_area():
+    plan, _ = I.compile_plan("restaurants in Mecklenburg County", {"area": {"place": "Myers Park", "label": "Myers Park"}})
+    assert plan.scope["kind"] == "county" and plan.scope["label"] == "Mecklenburg County" and plan.scope.get("geojson")
+
+
+@pytest.mark.skipif(not _geo_ready(), reason="boundary data not built")
+def test_city_zip_radius_and_outside():
+    assert I.compile_plan("buildings taller than 30 m in Charlotte", {})[0].scope["kind"] == "city"
+    assert I.compile_plan("restaurants in 28202", {})[0].scope["kind"] == "zip"
+    assert I.compile_plan("restaurants within 5 miles of Lake Norman", {})[0].scope["kind"] == "radius"
+    plan, info = I.compile_plan("restaurants in Gastonia", {})
+    assert plan is None and "outside" in info["question"].lower()
+    # the derived Lake Norman set keeps its place scope (homes are on land, not in the water polygon)
+    plan, _ = I.compile_plan("homes with pools in Lake Norman in the 100-year flood zone", {})
+    assert plan.scope.get("place") == "Lake Norman" and "geojson" not in plan.scope
