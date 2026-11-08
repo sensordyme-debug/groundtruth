@@ -609,11 +609,13 @@ def ui_session(sid: str) -> Response:  # deep link to a saved session: the app r
     return ui_index()
 
 
+from api.investigations_api import router as _inv_router  # noqa: E402
 from api.point_api import router as _point_router  # noqa: E402
 from api.sessions import router as _sessions_router  # noqa: E402
 
 app.include_router(_sessions_router)
 app.include_router(_point_router)
+app.include_router(_inv_router)
 
 
 @app.get("/v2assets/{path:path}")

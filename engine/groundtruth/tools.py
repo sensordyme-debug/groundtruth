@@ -48,7 +48,12 @@ _PEOPLE_RE = __import__("re").compile(
 def _people(query: str) -> bool:
     """People-data policy (runs BEFORE any planner or model): owners, residents, demographics, crime, school ratings."""
     q = query.lower()
-    return any(t in q for t in PEOPLE_TERMS) or bool(_PEOPLE_RE.search(q))
+    # whole words only: "resident" must not match "residential", "race" must not match "terrace" / "racetrack"
+    return bool(_PEOPLE_WORDS.search(q)) or bool(_PEOPLE_RE.search(q))
+
+
+_PEOPLE_WORDS = __import__("re").compile(r"(?<![a-z])(?:" + "|".join(
+    __import__("re").escape(t.strip()) + "s?" for t in PEOPLE_TERMS) + r")(?![a-z])")
 
 
 def load_senses() -> dict[str, Any]:

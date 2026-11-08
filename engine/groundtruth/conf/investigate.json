@@ -1,0 +1,40 @@
+{
+  "_doc": "Investigations (engine/groundtruth/investigate.py): how an objective becomes a typed plan, how evidence strength is graded, and the transparent ranking rule. Wording shown to users lives here too.",
+  "constraints": {
+    "flood_100yr": ["100-year flood", "100 year flood", "1% annual", "special flood hazard", "sfha", "flood zone ae", "zone ae"],
+    "flood_500yr": ["500-year flood", "500 year flood", "0.2%"],
+    "flood_any": ["flood zone", "flood zones", "floodplain", "flood plain", "flood risk", "flood exposure", "flood-risk", "flood hazard", "exposed to flood", "flooding"],
+    "rank": ["rank", "highest-risk", "highest risk", "most exposed", "strongest candidates", "worst", "top "],
+    "trees_over": ["trees hanging over", "trees over", "under trees", "under canopy", "tree cover over", "overhanging"],
+    "lakefront": ["lakefront", "on the lake", "waterfront", "lake access", "along the lake", "on the shore"],
+    "docks": ["dock", "docks"],
+    "homes_with_pools": ["homes with pools", "houses with pools", "properties with pools", "properties with swimming pools", "residential properties with", "homes with swimming pools", "houses with swimming pools", "residential pools", "lakefront homes", "lakefront houses", "lakefront properties"],
+    "follow_up": ["which of those", "which of them", "of those", "of these", "only the ones", "only those", "just the ones", "those that", "them in", "those in", "show only"]
+  },
+  "rank_rule": {
+    "_doc": "No invented risk score. Results are ORDERED by explicit, documented keys; missing values sort last and are shown as unavailable.",
+    "keys": [
+      {"prop": "flood_kind", "order": ["100yr", "500yr", null], "label": "flood zone (100-year first)"},
+      {"prop": "elev_above_bfe_m", "dir": "asc", "label": "height above the base flood elevation (lowest first)"},
+      {"prop": "shore_dist_m", "dir": "asc", "label": "distance to the shore (closest first)"}
+    ]
+  },
+  "detection_quality": {
+    "_doc": "What is known about each detector's precision. null = not measured for this data version; never shown as a probability.",
+    "house_with_pool": {"precision": null, "n": null, "note": "eye-checked 24–27/30 on an earlier draft (draft0); the v1 set is not re-measured"},
+    "lakefront": {"precision": null, "n": null, "note": "eye-checked about 22/30 on draft0; not re-measured for v1"},
+    "has_dock": {"precision": null, "n": null, "note": "eye-checked 23–24/30 on draft1; not re-measured for v1"},
+    "swimming_pool": {"precision": 0.583, "n": 24, "note": "pool search precision@24 (docs/EVALUATION.md)"},
+    "boat_dock": {"precision": 1.0, "n": 12, "note": "open-vocabulary boat docks 12/12 eye-checked (docs/EVALUATION.md)"}
+  },
+  "strength": {
+    "_doc": "Evidence strength, weakest link wins along a dependency chain.",
+    "authoritative_layer": "strong",
+    "measured_model_min_precision": 0.8,
+    "measured_model_ok": "moderate",
+    "unmeasured_model": "weak",
+    "missing": "insufficient"
+  },
+  "limits": {"max_steps": 12, "step_timeout_s": 120, "max_features_kept": 5000, "top_findings": 10},
+  "suggest_places": ["Lake Norman", "Ballantyne", "Myers Park"]
+}
