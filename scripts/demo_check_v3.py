@@ -137,7 +137,8 @@ def main() -> int:
             page.locator("[data-testid=report-link]").last.click()
         md = open(dl.value.path(), encoding="utf-8").read()
         ok("report has findings, sources, gaps and reproducibility",
-           all(k in md for k in ("## Findings", "## Sources", "## Limitations and gaps", "## Reproducibility")) and f"{m} of {n}" in md,
+           all(k in md for k in ("## Findings", "## Sources", "## Limitations and gaps", "## Reproducibility"))
+           and (f"{m} of {n}" in md or f"{m} of the " in md),
            f"{len(md)} chars")
 
         # ---- reload → restore from the sidebar

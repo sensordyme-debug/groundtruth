@@ -830,7 +830,7 @@ export default function App() {
               {attrOpen && <div className="gt-frost gt-in gt-attrpop" data-testid="sources-panel">
                 <div style={{ fontWeight: 500, color: "#191919", marginBottom: 4 }}>Data sources</div>
                 {srcs.length ? srcs.filter((x) => !String(x.provider ?? "").match(/foursquare|yelp|google/i) || x.freshness_status).slice(0, 14).map((x) => (
-                  <div key={x.source_id ?? x.dataset_name}>{x.dataset_name}{x.acquisition_date ? ` · acquired ${x.acquisition_date}` : ""}{x.freshness_status ? ` · ${x.freshness_status}` : ""}{x.license ? ` · ${x.license}` : ""}</div>))
+                  <div key={x.source_id ?? x.dataset_name}>{x.dataset_name}{x.acquisition_date ? ` · acquired ${acq(x.acquisition_date)}` : ""}{x.freshness_status ? ` · ${x.freshness_status}` : ""}{x.license ? ` · ${x.license}` : ""}</div>))
                   : <div>NAIP (USDA) · © OpenStreetMap contributors · FEMA NFHL · Overture Maps · USGS 3DEP · MapLibre</div>}
               </div>}
             </div>
@@ -1097,5 +1097,18 @@ function srcLine(srcs: any[], key: string): string {
   const k = key.toLowerCase();
   const x = srcs.find((r) => `${r.source_id ?? ""} ${r.dataset_name ?? ""} ${r.provider ?? ""}`.toLowerCase().includes(k));
   if (!x) return "";
-  return [x.provider ?? x.dataset_name, x.acquisition_date ? `acquired ${x.acquisition_date}` : null, x.freshness_status].filter(Boolean).join(" · ");
+  return [shortProvider(x), x.acquisition_date ? `acquired ${acq(x.acquisition_date)}` : null, x.freshness_status].filter(Boolean).join(" · ");
+}
+
+/** An acquisition date that may be a string or {start, end, flights}: "2022-06-02 – 2022-09-27". */
+function acq(d: any): string {
+  if (!d) return "";
+  if (typeof d === "string") return d;
+  if (d.start && d.end) return d.start === d.end ? d.start : `${d.start} – ${d.end}`;
+  return String(d.date ?? d.start ?? d.end ?? "");
+}
+
+function shortProvider(x: any): string {
+  const n = String(x.dataset_name ?? x.provider ?? "");
+  return n.length > 48 ? `${n.slice(0, 46)}…` : n;
 }

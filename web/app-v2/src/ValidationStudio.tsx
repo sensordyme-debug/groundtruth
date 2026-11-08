@@ -158,12 +158,13 @@ export default function ValidationStudio({ map, onToast }: { map: GtMap | null; 
 }
 
 function MetricsTable({ m }: { m: any }) {
-  const rows: [string, any][] = Object.entries(m.by_class ?? m.classes ?? {});
-  if (!rows.length) return <div className="gt-srcline">No reviews yet: precision appears once samples are reviewed.</div>;
+  const rows: [string, any][] = Object.entries(m.classes ?? {});
+  if (!rows.length || rows.every(([, v]) => !v.n_reviewed)) return <div className="gt-srcline">No reviews yet: precision appears once samples are reviewed.</div>;
   return (
-    <table className="gt-vs-table"><thead><tr><th>Class</th><th>Reviewed</th><th>Precision</th><th>95 % CI</th></tr></thead>
+    <table className="gt-vs-table"><thead><tr><th>Class</th><th>Reviewed</th><th>Precision</th><th>95 % CI</th><th>Recall</th></tr></thead>
       <tbody>{rows.map(([k, v]) => (
-        <tr key={k}><td>{k}</td><td>{v.n ?? v.reviewed ?? "—"}</td><td>{v.precision != null ? Number(v.precision).toFixed(2) : "—"}</td>
-          <td>{Array.isArray(v.precision_ci ?? v.ci) ? (v.precision_ci ?? v.ci).map((x: number) => Number(x).toFixed(2)).join("–") : "—"}</td></tr>))}</tbody></table>
+        <tr key={k}><td>{k}</td><td>{v.n_reviewed ?? 0} / {v.n_samples ?? "—"}</td><td>{v.precision != null ? Number(v.precision).toFixed(2) : "—"}</td>
+          <td>{Array.isArray(v.precision_ci95) ? v.precision_ci95.map((x: number) => Number(x).toFixed(2)).join("–") : "—"}</td>
+          <td>{v.recall?.status === "measured" ? Number(v.recall.recall).toFixed(2) : "not measurable"}</td></tr>))}</tbody></table>
   );
 }

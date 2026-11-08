@@ -269,6 +269,10 @@ def compile_plan(objective: str, context: dict[str, Any] | None = None, prev: In
         res = G.resolve(objective)  # text only: the map's area is applied below, after the text
     except Exception:  # noqa: BLE001 (boundary data missing: fall back to the planner's place names)
         res = None
+    # "within N m of the shore / the lake / the water" is a per-object condition (the shore-distance filter), not a
+    # search area: never let it replace the place scope
+    if res is not None and res.kind == "radius" and re.search(r"of the (shore|shoreline|lake|water)", res.matched_text or "", re.I):
+        res = None
     if res is not None and not res.resolved and "outside" in (res.reason or "").lower():
         return None, {"question": f"{res.reason[:1].upper()}{res.reason[1:]}. Groundtruth covers Mecklenburg County only.",
                       "suggestions": [f"in {x}" for x in c["suggest_places"]], "reason": "outside coverage"}

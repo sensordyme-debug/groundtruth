@@ -216,3 +216,11 @@ def test_city_zip_radius_and_outside():
     # the derived Lake Norman set keeps its place scope (homes are on land, not in the water polygon)
     plan, _ = I.compile_plan("homes with pools in Lake Norman in the 100-year flood zone", {})
     assert plan.scope.get("place") == "Lake Norman" and "geojson" not in plan.scope
+
+
+@pytest.mark.skipif(not _geo_ready(), reason="boundary data not built")
+def test_shore_distance_is_a_condition_not_an_area():
+    plan, info = I.compile_plan("homes with pools within 30 m of the shore in Lake Norman", {})
+    assert plan is not None, info
+    assert plan.scope.get("place") == "Lake Norman"
+    assert any(s.op == "filter" and "within_m_of_shore" in s.args["where"] for s in plan.steps)
