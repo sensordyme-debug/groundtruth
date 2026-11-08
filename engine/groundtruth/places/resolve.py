@@ -97,8 +97,14 @@ def normalize_phone(s: str | None) -> str:
     return d if len(d) == 10 else ""
 
 
-def categories_compatible(a: PlaceRecord, b: PlaceRecord) -> bool:
-    return not (a.categories and b.categories and not set(a.categories) & set(b.categories))
+def categories_compatible(a: PlaceRecord, b: PlaceRecord, families: dict[str, Any] | None = None) -> bool:
+    """Compatible unless both are known and share neither a category nor a family (conf resolve.category_families):
+    the same business is often a 'bar' on one provider and a 'restaurant' on another."""
+    if not (a.categories and b.categories) or set(a.categories) & set(b.categories):
+        return True
+    fam = {c: k for k, cs in (families or {}).items() if not k.startswith("_") for c in cs}
+    fa, fb = {fam.get(c) for c in a.categories} - {None}, {fam.get(c) for c in b.categories} - {None}
+    return bool(fa & fb)
 
 
 def _project(records: list[PlaceRecord]) -> np.ndarray:
@@ -117,7 +123,7 @@ def pair_evidence(a: PlaceRecord, b: PlaceRecord, dist_m: float, rc: dict[str, A
     asim = address_similarity(a.address, b.address)
     pa, pb = normalize_phone(a.phone), normalize_phone(b.phone)
     phone_match = bool(pa and pa == pb)
-    compat = categories_compatible(a, b)
+    compat = categories_compatible(a, b, rc.get("category_families"))
     rule = None
     if a.provider != b.provider and compat:
         if dist_m <= rc["max_dist_m"] and ns >= rc["name_min"]:
@@ -198,7 +204,7 @@ def resolve(records: list[PlaceRecord], conf: dict[str, Any] | None = None,
                 pa, pb = normalize_phone(a.phone), normalize_phone(b.phone)
                 if pa and pb and pa != pb:
                     conflicts.append(f"{a.id} and {b.id} report different phone numbers")
-                if not categories_compatible(a, b):
+                if not categories_compatible(a, b, rc.get("category_families")):
                     conflicts.append(f"{a.id} and {b.id} report incompatible categories")
         nprov = len({m.provider for m in members})
         status = "single" if nprov == 1 else ("conflict" if conflicts else "corroborated")

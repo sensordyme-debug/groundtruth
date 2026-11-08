@@ -94,3 +94,18 @@ def test_normalizers():
     assert address_similarity("2424 N Davidson St", "2426 N Davidson St") == 0.0
     assert normalize_phone("+1 (704) 555-0101") == normalize_phone("704.555.0101") == "7045550101"
     assert normalize_phone("123") == ""
+
+
+def test_bar_and_restaurant_same_business_merge_but_hospital_does_not():
+    """Live case 2026-11-08: one restaurant was 'bar' on Yelp and 'restaurant' on Foursquare, 14 m apart: one business."""
+    from groundtruth.places.base import PlaceRecord
+    from groundtruth.places.resolve import resolve
+    a = PlaceRecord(id="fsq:1", provider="foursquare", provider_place_id="1", name="Kid Cashew", lat=35.1900, lon=-80.8200,
+                    categories=["restaurant"], retrieved_at="2026-11-08T00:00:00Z")
+    b = PlaceRecord(id="yelp:1", provider="yelp", provider_place_id="1", name="Kid Cashew", lat=35.19012, lon=-80.82002,
+                    categories=["bar"], retrieved_at="2026-11-08T00:00:00Z")
+    c = PlaceRecord(id="yelp:2", provider="yelp", provider_place_id="2", name="Kid Cashew", lat=35.19005, lon=-80.82001,
+                    categories=["hospital"], retrieved_at="2026-11-08T00:00:00Z")
+    cl = resolve([a, b])
+    assert len(cl) == 1 and cl[0]["match_status"] == "corroborated"
+    assert len(resolve([a, c])) == 2  # food vs health: different families never merge
