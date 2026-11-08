@@ -1,6 +1,13 @@
 import type { Bbox } from "./api";
 
-export const SUGGESTIONS = ["houses with pools", "boat docks on Lake Norman", "buildings taller than 30 m in Uptown"];
+export const EXAMPLE_QUERIES = ["find swimming pools", "parking lots in Uptown", "solar on warehouses"];
+export const AGENT_DEMO_PROMPT = "pools within 1 km of I-485 in Ballantyne";
+// Landing chips: the measured, demo-ready requests (each < 2 s warm). Solar/parking stay typeable but are experimental.
+export const LANDING_CHIPS = [
+  "find swimming pools", "pools within 1 km of I-485 in Ballantyne", "pools in flood zones in Matthews",
+  "new pools since 2020 in Ballantyne", "boat docks on Lake Norman",
+];
+export const AGENT_CHIPS = [...LANDING_CHIPS, "parking lots in Uptown (experimental)", "solar on warehouses (experimental)"];
 export const DEFAULT_PLACES = ["Ballantyne", "NoDa", "South End", "Myers Park", "Lake Norman", "University City", "Matthews", "Uptown"];
 
 /** Context layer. Shown from vector tiles (GET /api/v1/vt) when the API lists the key, else as GeoJSON from add_layer.
@@ -29,30 +36,14 @@ export const layerLabel = (k: string) => CONTEXT_LAYERS.find((l) => l.key === k)
 /** Layers offered in the "within … of" filter. */
 export const NEAR_LAYERS = ["osm_i485", "osm_i77", "osm_light_rail", "fema_flood_zones"];
 
-/** Result colours: the one place they are defined. Accents chosen to never occur in aerial imagery (no blue, green
- *  or grey for results): hot magenta for results, bright orange for "new since 2020". */
 export const COLORS = {
-  hit: "#ff2bd6",        // result accent (hot magenta)
-  hitHover: "#ff8bec",   // hover = brighter
-  accepted: "#2bff6e",   // accepted ring (bright green, only ever a ring around a magenta/orange result)
+  hit: "#ff6a2b",
+  accepted: "#13794a",
   rejected: "#b42318",
-  new: "#ff8a00",        // new since 2020 (bright orange)
-  newHover: "#ffc266",
-  existing: "#ff2bd6",   // existing since 2020 = an ordinary result
-  unsure: "#ffe600",     // compare_years could not tell
-  halo: "#000000",       // dark halo under every outline / dot
-  spotlight: "#000000",  // imagery dim overlay
+  new: "#ff6a2b",
+  existing: "#8e8e8c",
+  unsure: "#e3b341",
   pick: "#191919",
-};
-/** Result styling knobs (map). Zoom bands: dots < CLOSE_Z, outlines >= CLOSE_Z (cross-faded over FADE_Z). */
-export const RESULT_STYLE = {
-  haloOpacity: 0.7,
-  spotlightOpacity: 0.25,
-  midZ: 13,          // dots get a ring from here; clusters (exhaustive sets only) stop below it
-  closeZ: 16,        // outlines + 25 % fill from here
-  fadeZ: 0.8,        // cross-fade width (zoom levels) between dots and outlines
-  fillOpacity: 0.25,
-  lineWidth: 3,
 };
 
 /** "find swimming pools in Ballantyne" → { text: "swimming pools", place: "Ballantyne" } (case-insensitive place match). */

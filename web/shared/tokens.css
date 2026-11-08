@@ -1,51 +1,50 @@
 /* Adapted from ORYN (pre-existing work by Monish).
- * Design tokens (colours, type, radii, motion) as plain CSS custom properties. Values only; no ORYN component code.
- * Listed in docs/PRIOR_WORK.md. Light theme is the default; dark only when a page sets data-theme="dark". */
+ * Design tokens (colours, type, radii, motion) re-expressed as plain CSS custom properties so Groundtruth
+ * looks like ORYN. Values only; no ORYN component code. Listed in docs/PRIOR_WORK.md. */
 :root {
   --font-sans: "Inter", "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
 
-  /* colour (light, default) */
-  --surface-0: #f4f4f2;                    /* canvas */
-  --surface-1: #ffffff;                    /* panels, cards */
-  --surface-2: #fafaf9; --surface-3: #efefed; --overlay: #ffffff;
-  --glass: rgb(255 255 255 / .85);         /* panels frosted over the map */
-  --glass-blur: 20px;
+  /* light (default) */
+  --surface-0: #f4f4f2; --surface-1: #ffffff; --surface-2: #fafaf9; --surface-3: #efefed; --overlay: #ffffff;
   --fg: #191919; --fg-muted: #5c5c5c; --fg-subtle: #646462;
-  --line: #e7e6e3;                         /* hairlines */
-  --line-strong: #d4d4d1; --line-control: #767674;
+  --line: #e6e6e3; --line-strong: #d4d4d1; --line-control: #767674;
   --accent: #191919; --on-accent: #ffffff;
-  --pill-user: #efefed;                    /* user message pill */
   --danger: #b42318; --warning: #8a5a00; --success: #13794a; --info: #1457cc;
-  --hover: rgb(25 25 25 / .05); --active: rgb(25 25 25 / .085);
+  --hover: rgba(25, 25, 25, .055); --active: rgba(25, 25, 25, .09);
   --data-veg: #3b6b1e; --data-water: #0a6283; --data-amber: #7a5000; --data-alert: #b42318; --data-violet: #5847b8;
-  --map-accent: #ff2bd6;
-  --shadow-raised: 0 1px 2px rgb(25 25 25 / .05), 0 8px 24px rgb(25 25 25 / .07);
-  --shadow-overlay: 0 1px 2px rgb(25 25 25 / .06), 0 8px 24px rgb(25 25 25 / .12);
+  --map-accent: #ff6a2b; --map-accent-soft: #ff8a55;
+  --shadow-raised: 0 1px 2px rgb(25 25 25 / .04), 0 8px 24px -10px rgb(25 25 25 / .10);
+  --shadow-overlay: 0 2px 6px rgb(25 25 25 / .06), 0 24px 56px -16px rgb(25 25 25 / .20);
+  --glass-blur: 22px;
 
-  /* shape + space (8-px grid) */
-  --radius-sm: 10px; --radius-md: 14px; --radius-lg: 20px; --radius-pill: 999px;
-  --radius-control: 10px; --radius-panel: 14px; --radius-chip: 20px;
-  --s-1: 4px; --s-2: 8px; --s-3: 12px; --s-4: 16px; --s-5: 24px; --s-6: 32px; --s-7: 48px;
+  --radius-control: 8px; --radius-panel: 14px; --radius-chip: 20px; --radius-pill: 999px;
+  --dur-fast: 150ms; --dur: 200ms; --dur-slow: 260ms;
+  --ease-emphasis: cubic-bezier(.22, 1, .36, 1); --ease-standard: cubic-bezier(.2, 0, 0, 1);
+  --ease-exit: cubic-bezier(.4, 0, 1, 1); --ease-out-expo: cubic-bezier(.16, 1, .3, 1);
 
-  /* motion: UI 150–250 ms ease-out; the camera has its own 1.5 s ease */
-  --dur-fast: 150ms; --dur: 200ms; --dur-slow: 250ms;
-  --ease-out: cubic-bezier(.22, 1, .36, 1); --ease-emphasis: cubic-bezier(.22, 1, .36, 1);
-  --ease-standard: cubic-bezier(.2, 0, 0, 1); --ease-exit: cubic-bezier(.4, 0, 1, 1); --ease-out-expo: cubic-bezier(.16, 1, .3, 1);
-
-  /* type (Inter 400 / 500 only): body 14–15, secondary 13, titles 20–28 */
-  --text-12: 12px; --text-13: 13px; --text-14: 14px; --text-15: 15px; --text-16: 16px; --text-20: 20px; --text-22: 22px;
-  --text-28: 28px; --text-32: 32px; --text-40: 40px; --text-64: 64px;
-  --track-title: -0.015em;
+  /* type scale (px): 12 13 14 16 20 22 32 40 64 — weight 400 almost everywhere */
+  --text-12: 12px; --text-13: 13px; --text-14: 14px; --text-16: 16px; --text-20: 20px; --text-22: 22px;
+  --text-32: 32px; --text-40: 40px; --text-64: 64px;
 }
 
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --surface-0: #0e0e0e; --surface-1: #171717; --surface-2: #1c1c1c; --surface-3: #242424; --overlay: #1c1c1c;
+    --fg: #f2f2f0; --fg-muted: #a8a8a6; --fg-subtle: #8e8e8c;
+    --line: #272727; --line-strong: #343434; --line-control: #7b7b79;
+    --accent: #f2f2f0; --on-accent: #0e0e0e;
+    --danger: #f2706a; --warning: #e3b341; --success: #4ec07f; --info: #79a9ff;
+    --hover: rgba(242, 242, 240, .06); --active: rgba(242, 242, 240, .10);
+    --data-veg: #8dbf63; --data-water: #5fb4d6; --data-amber: #e9b949; --data-alert: #ea5d54; --data-violet: #a39be0;
+    --glass-blur: 26px;
+  }
+}
 :root[data-theme="dark"] {
   --surface-0: #0e0e0e; --surface-1: #171717; --surface-2: #1c1c1c; --surface-3: #242424; --overlay: #1c1c1c;
-  --glass: rgb(23 23 23 / .85);
   --fg: #f2f2f0; --fg-muted: #a8a8a6; --fg-subtle: #8e8e8c;
   --line: #272727; --line-strong: #343434; --line-control: #7b7b79;
-  --accent: #f2f2f0; --on-accent: #0e0e0e; --pill-user: #242424;
+  --accent: #f2f2f0; --on-accent: #0e0e0e;
   --danger: #f2706a; --warning: #e3b341; --success: #4ec07f; --info: #79a9ff;
-  --hover: rgb(242 242 240 / .06); --active: rgb(242 242 240 / .10);
   --data-veg: #8dbf63; --data-water: #5fb4d6; --data-amber: #e9b949; --data-alert: #ea5d54; --data-violet: #a39be0;
 }

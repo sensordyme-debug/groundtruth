@@ -90,19 +90,7 @@ export async function tool(name: string, body: Record<string, unknown>, origin: 
 }
 
 export const exampleOf = (f: Feature): string =>
-  (f.properties.example as string) ?? (f.properties.cell != null ? `${f.properties.chip_id ?? f.id}#${f.properties.cell}` : String(f.id ?? f.properties.id));
-
-/** Bbox of any geometry (results without a cell, e.g. find_buildings outlines). */
-export function geomBbox(g: GeoJSON.Geometry | null): number[] {
-  let [w, s, e, n] = [Infinity, Infinity, -Infinity, -Infinity];
-  const walk = (c: any): void => { if (typeof c[0] === "number") { w = Math.min(w, c[0]); s = Math.min(s, c[1]); e = Math.max(e, c[0]); n = Math.max(n, c[1]); } else c.forEach(walk); };
-  if (g && "coordinates" in g) walk(g.coordinates);
-  return [w, s, e, n];
-}
-/** The cell box when the result has one, else the bbox of its geometry. */
-export const cellBboxOf = (f: Feature): number[] => f.properties.cell_bbox ?? geomBbox(f.geometry);
-/** Placeholder shape: the cell box, or the feature geometry itself when it has no cell (already an outline). */
-export const shapeOf = (f: Feature): GeoJSON.Geometry => (f.properties.cell_bbox ? boxPoly(f.properties.cell_bbox) : f.geometry!);
+  (f.properties.example as string) ?? `${f.properties.chip_id ?? f.id}#${f.properties.cell}`;
 
 export function boxPoly(b: number[]): GeoJSON.Polygon {
   const [w, s, e, n] = b;
@@ -135,10 +123,6 @@ export type AgentResponse = {
   status: "ok" | "partial" | "declined";
   steps: AgentStep[];
   actions: Record<string, any>[];
-  brain?: string;
-  current_ref?: string;
-  ask?: string;
-  cached?: boolean;
 };
 
 /** POST /api/v1/agent/run: the server-side deterministic rules planner (no LLM). */

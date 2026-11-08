@@ -1,6 +1,5 @@
-// Agent slot. The server planner (POST /api/v1/agent/run: the deterministic rules planner, or a local LLM brain that
-// falls back to it) runs the tool calls and returns `steps` (step_N envelopes) plus map actions per this schema; the UI
-// applies them through `AgentRun.apply`.
+// Agent slot. The server's deterministic rules planner (POST /api/v1/agent/run, no LLM) runs the tool calls and returns
+// `steps` (step_N envelopes) plus map actions per this schema; the UI applies them through `AgentRun.apply`.
 import { AgentResponse, Bbox, Envelope, agentRun, publishEnvelope } from "./api";
 
 export type MapAction =
@@ -9,8 +8,6 @@ export type MapAction =
   | { action: "show_candidates" | "show_metrics" | "offer_download"; envelope_ref: string; format?: string }
   | { action: "add_results"; layer_id: string; envelope_ref: string; style?: Record<string, any> }
   | { action: "set_filter"; layer_id: string; envelope_ref: string }
-  | { action: "heatmap"; envelope_ref: string; label?: string }
-  | { action: "suggest_places"; places: string[] }
   | { action: "say"; text: string };
 
 /** The UI surface the adapter drives. App.tsx implements it. */
@@ -22,8 +19,6 @@ export interface AgentTarget {
   offerDownload(env: Envelope, format?: string): void;
   addResults(layerId: string, env: Envelope, style?: Record<string, any>): void;
   setFilter(layerId: string, env: Envelope): void;
-  heatmap(env: Envelope, label?: string): void;
-  suggestPlaces(places: string[]): void;
   say(text: string): void;
 }
 
@@ -47,26 +42,24 @@ export class AgentRun {
       case "offer_download": return t.offerDownload(this.ref(a.envelope_ref), a.format);
       case "add_results": return t.addResults(a.layer_id, this.ref(a.envelope_ref), a.style);
       case "set_filter": return t.setFilter(a.layer_id, this.ref(a.envelope_ref));
-      case "heatmap": return t.heatmap(this.ref(a.envelope_ref), a.label);
-      case "suggest_places": return t.suggestPlaces(a.places ?? []);
       case "say": return t.say(a.text);
       default: throw new Error(`unknown action ${(a as any).action}`);
     }
   }
 }
 
-/** Run the planner for `text`, publish every step envelope on the call bus (origin "agent"), then apply the actions in
- *  order. Returns the raw response; per-action errors go to `onError` and do not stop later actions. */
-export async function runPlanner(text: string, target: AgentTarget,
+/** Run the rules planner for `text`, publish every step envelope to the work log (origin "agent"), then apply the
+ *  actions in order. Returns the raw response; per-action errors go to `onError` and do not stop later actions. */
+export async function runRulesPlanner(text: string, target: AgentTarget,
   opts: { aoi?: string; context?: { place?: string | null; last_text?: string | null }; onError?: (msg: string) => void;
-          onResponse?: (res: AgentResponse, run: AgentRun) => void } = {}): Promise<AgentResponse> {
+          onResponse?: (res: AgentResponse) => void } = {}): Promise<AgentResponse> {
   const res = await agentRun(text, opts.aoi, opts.context);
+  opts.onResponse?.(res);
   const run = new AgentRun(target);
   for (const s of res.steps ?? []) {
     run.envelopes[s.ref] = s.envelope;
     publishEnvelope(s.tool, s.envelope, "agent", { _ref: s.ref });
   }
-  opts.onResponse?.(res, run);
   for (const a of res.actions ?? []) {
     try { run.apply(a as MapAction); }
     catch (e) { opts.onError?.(String(e)); }
