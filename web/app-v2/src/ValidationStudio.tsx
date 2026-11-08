@@ -130,7 +130,8 @@ export default function ValidationStudio({ map, onToast }: { map: GtMap | null; 
             <span>Region</span><span>{cur.region}{cur.holdout_group ? ` · ${cur.holdout_group}` : ""}{cur.in_label_cluster ? " · in the training-label cluster" : ""}</span>
             <span>Detector</span><span>{cur.source_tool ?? "—"}{cur.model ? ` · ${cur.model}` : ""}</span>
             <span>Score</span><span>{cur.score != null ? `${Number(cur.score).toFixed(2)} (uncalibrated)` : "—"}</span>
-            <span>Imagery</span><span>{cur.imagery ? Object.values(cur.imagery).filter((v) => typeof v !== "object").join(" · ") : "NAIP 2022"}</span>
+            <span>Imagery</span><span>NAIP 2022{cur.acquisition_date ? ` · flown ${cur.acquisition_date}` : ""}{cur.scene_id ? ` · ${cur.scene_id}` : ""}</span>
+            {cur.geometry_kind && <><span>Prediction</span><span>{cur.geometry_kind === "box" ? "a box (no outline yet)" : "an outline"}</span></>}
             {cur.review && <><span>Your review</span><span data-testid="vs-current">{cur.review.decision.replace("_", " ")}{cur.review.polygon ? " · polygon" : ""}</span></>}
           </div>
           <div className="gt-vs-legend"><span className="gt-vs-pred" />AI prediction<span className="gt-vs-human" />Your polygon</div>

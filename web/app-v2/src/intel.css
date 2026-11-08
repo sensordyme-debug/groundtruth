@@ -134,3 +134,6 @@
 .gt-vs-table { width: 100%; border-collapse: collapse; font-size: 12px; font-variant-numeric: tabular-nums; }
 .gt-vs-table th, .gt-vs-table td { text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--hairline); }
 .gt-vs-table th { color: var(--muted-body); font-weight: 500; }
+.gt-vs-progress { border: 1px solid var(--hairline); }
+.gt-vs-progress div { background: #d9e8dd; }
+.gt-vs-card .gt-input { flex: none; }

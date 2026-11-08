@@ -668,7 +668,7 @@ export default function App() {
             </div>
 
             {validating && <ValidationStudio map={gm.current} onToast={setToast} />}
-            <div ref={msgsEl} data-testid="msgs" hidden={validating} style={{ flex: 1, overflowY: "auto", padding: "8px 22px 24px", display: "flex", flexDirection: "column", gap: 16 }}>
+            <div ref={msgsEl} data-testid="msgs" style={{ display: validating ? "none" : "flex", flex: 1, overflowY: "auto", padding: "8px 22px 24px", flexDirection: "column", gap: 16 }}>
               {msgs.map((m, i) => {
                 if (m.role === "user") return (
                   <div key={m.id} className="gt-in" style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
