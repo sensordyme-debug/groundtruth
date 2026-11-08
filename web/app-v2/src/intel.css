@@ -157,3 +157,9 @@
   .gt-app:has(.gt-drawer) .gt-rail { transform: none; box-shadow: 0 12px 32px rgba(0, 0, 0, .12); }
   .gt-drawer { left: 48px; width: min(280px, calc(100vw - 64px)) !important; }
 }
+
+/* terrain layers (layers popover) */
+.gt-ter-h { margin: 6px 10px 2px; padding-top: 8px; border-top: 1px solid var(--hairline); font-size: 12px; font-weight: 500; color: var(--muted-body); }
+.gt-ter-legend { display: flex; flex-direction: column; gap: 4px; padding: 6px 10px 6px; }
+.gt-ter-ramp { height: 8px; border-radius: 999px; }
+.gt-ter-scale { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); }

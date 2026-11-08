@@ -14,7 +14,14 @@
         "datum": "NAVD88",
         "source_id": "fema_nfhl"
       },
-      "offsets_m": [0, 0.5, 1, 1.5, 2, 3],
+      "offsets_m": [
+        0,
+        0.5,
+        1,
+        1.5,
+        2,
+        3
+      ],
       "seed_water_body": "Lake Norman",
       "grid_m": 2,
       "assumptions": [
@@ -24,8 +31,16 @@
         "Only ground below the level AND connected to the lake is wet: no rainfall ponding, stormwater drainage, culverts, levees or walls are modelled",
         "Dam operations (Cowans Ford) are not modelled",
         "Where the lidar has no ground measurement the outcome is unknown, never dry",
-        "A building or road that touches the extent is not predicted to flood: floors, foundations and drainage are unknown"
-      ]
+        "A building or road that touches the extent is not predicted to flood: floors, foundations and drainage are unknown",
+        "Computed for a 3.6 × 3.3 km window of the shore only; land outside the window is not assessed"
+      ],
+      "window_lonlat": [
+        -80.9,
+        35.48,
+        -80.86,
+        35.51
+      ],
+      "_window_doc": "bounded build (2026-11-08): the PC had < 4 GB free, so the scenario is computed for a ~3.6 x 3.3 km window of the Lake Norman demo area (Cornelius shore, around the point-find starter view), not all 10 x 10 km"
     }
   ]
 }

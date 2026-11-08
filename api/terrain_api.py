@@ -71,6 +71,12 @@ def terrain_image(place: str, name: str) -> FileResponse:
     return FileResponse(p, media_type="image/png", headers=_CACHE)
 
 
+@router.get("/{place}/contours.geojson")
+def terrain_contours(place: str) -> FileResponse:
+    p = _file(_place_dir(place), "contours_5m.geojson")
+    return FileResponse(p, media_type="application/geo+json", headers=_CACHE)
+
+
 class ProfileIn(BaseModel):
     line: list[list[float]] = Field(..., min_length=2, max_length=500)
     n: int = Field(200, ge=2, le=T.MAX_SAMPLES)

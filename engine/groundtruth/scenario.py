@@ -109,25 +109,42 @@ def _seed_polygon(d: dict[str, Any]):
     return unary_union(gs)
 
 
+def _window(r, window_lonlat):
+    """A rasterio window for a lon/lat bbox (None = the whole raster)."""
+    if not window_lonlat:
+        return None
+    from pyproj import Transformer
+    from rasterio.windows import from_bounds
+
+    t = Transformer.from_crs("EPSG:4326", r.crs, always_xy=True).transform
+    x0, y0 = t(window_lonlat[0], window_lonlat[1])
+    x1, y1 = t(window_lonlat[2], window_lonlat[3])
+    return from_bounds(min(x0, x1), min(y0, y1), max(x0, x1), max(y0, y1), r.transform).round_offsets().round_lengths()
+
+
 @lru_cache(maxsize=1)
-def _grid(place: str, grid_m: float):
-    """The lidar DTM resampled (average) to grid_m, with its nodata mask and transform (EPSG:32617)."""
+def _grid(place: str, grid_m: float, window_lonlat: tuple | None = None):
+    """The lidar DTM resampled (average) to grid_m, with its nodata mask and transform (EPSG:32617); optionally only a
+    lon/lat window (a bounded build: memory scales with the window, not the place)."""
     import numpy as np
     import rasterio
     from rasterio.enums import Resampling
 
     p = config.data_dir("lidar") / place.replace(" ", "_") / "dtm.tif"
     with rasterio.open(p) as r:
+        win = _window(r, window_lonlat)
+        W, H = (int(win.width), int(win.height)) if win is not None else (r.width, r.height)
         f = grid_m / r.res[0]
-        h, w = int(r.height / f), int(r.width / f)
-        a = r.read(1, out_shape=(h, w), resampling=Resampling.average, masked=True)
-        tr = r.transform * r.transform.scale(r.width / w, r.height / h)
+        h, w = int(H / f), int(W / f)
+        a = r.read(1, window=win, out_shape=(h, w), resampling=Resampling.average, masked=True)
+        base = r.window_transform(win) if win is not None else r.transform
+        tr = base * base.scale(W / w, H / h)
         crs = r.crs
     dtm = np.asarray(a.filled(np.nan), dtype="float32")
     return dtm, tr, crs
 
 
-def _measured_mask(place: str, grid_m: float, shape_hw):
+def _measured_mask(place: str, grid_m: float, shape_hw, window_lonlat: tuple | None = None):
     """Cells with a real lidar ground measurement nearby: build_lidar fills unreturned cells with DSM = DTM, so a cell
     whose DSM equals its DTM AND has no neighbouring difference is treated as unmeasured (docs/CANOPY.md)."""
     import numpy as np
@@ -137,8 +154,9 @@ def _measured_mask(place: str, grid_m: float, shape_hw):
 
     base = config.data_dir("lidar") / place.replace(" ", "_")
     with rasterio.open(base / "dsm.tif") as a, rasterio.open(base / "dtm.tif") as b:
-        dsm = a.read(1, out_shape=shape_hw, resampling=Resampling.average, masked=True).filled(np.nan)
-        dtm = b.read(1, out_shape=shape_hw, resampling=Resampling.average, masked=True).filled(np.nan)
+        win = _window(b, window_lonlat)
+        dsm = a.read(1, window=win, out_shape=shape_hw, resampling=Resampling.average, masked=True).filled(np.nan)
+        dtm = b.read(1, window=win, out_shape=shape_hw, resampling=Resampling.average, masked=True).filled(np.nan)
     diff = np.abs(dsm - dtm) > 0.01
     return maximum_filter(diff, size=max(3, int(round(6 / grid_m)) | 1)) & np.isfinite(dtm)
 
@@ -172,8 +190,9 @@ def build(sid: str, out_dir: Path | None = None) -> dict[str, Any]:
     created = time.strftime("%Y-%m-%dT%H:%M:%S%z")
     out = out_dir or scenario_dir(sid)
     out.mkdir(parents=True, exist_ok=True)
-    dtm, tr, crs = _grid(d["place"], float(d["grid_m"]))
-    measured = _measured_mask(d["place"], float(d["grid_m"]), dtm.shape)
+    wl = tuple(d["window_lonlat"]) if d.get("window_lonlat") else None
+    dtm, tr, crs = _grid(d["place"], float(d["grid_m"]), wl)
+    measured = _measured_mask(d["place"], float(d["grid_m"]), dtm.shape, wl)
     to_utm = Transformer.from_crs("EPSG:4326", crs, always_xy=True).transform
     to_ll = Transformer.from_crs(crs, "EPSG:4326", always_xy=True).transform
     seed_ll = _seed_polygon(d)
@@ -229,6 +248,9 @@ def build(sid: str, out_dir: Path | None = None) -> dict[str, Any]:
          "definition": d, "real_sources": _real_sources(d), "grid_m": d["grid_m"], "crs_measure": str(crs),
          "unmeasured_land_m2": round(float(unmeasured_land.sum()) * cell_m2, 1),
          "unmeasured_note": "land cells without a lidar ground return are never counted as wet or dry",
+         "window_lonlat": list(wl) if wl else None,
+         "window_note": ("computed inside this window only: water connected to the lake only through ground outside the "
+                         "window is not counted") if wl else None,
          "levels": levels, "build_s": round(time.time() - t0, 1)}
     (out / "meta.json").write_text(json.dumps(m, indent=1))
     return m
