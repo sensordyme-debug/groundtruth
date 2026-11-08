@@ -1,0 +1,88 @@
+{
+  "_doc": "Third-party place providers (engine/groundtruth/places). Keys come from the process environment or a git-ignored .env at the repo root and are never logged. Spend safeguards: each provider refuses a request once its daily request cap or estimated daily USD cap (UTC day, from the usage ledger) would be exceeded. Prices are list prices at the lowest paid tier, read 2026-11-08; they are ESTIMATES for safeguards, not invoices. See docs/API_PROVIDER_MATRIX.md and docs/compliance/API_TERMS_REVIEW.md.",
+  "version": "0.1.0",
+  "ledger": "app/v1/provider_usage.jsonl",
+  "http": {
+    "timeout_s": 10.0,
+    "max_retries": 2,
+    "backoff_base_s": 0.5,
+    "backoff_max_s": 8.0,
+    "retry_after_max_s": 20.0
+  },
+  "order": ["foursquare", "yelp", "google"],
+  "max_providers_per_search": 3,
+  "providers": {
+    "foursquare": {
+      "enabled": true,
+      "reason": "",
+      "env": ["FOURSQUARE_API_KEY"],
+      "rate_limit_qps": 10,
+      "endpoint_qps": {"ask": 1},
+      "daily_request_cap": 300,
+      "daily_usd_cap": 5.0,
+      "cache_ttl_s": 0,
+      "request_premium_fields": false,
+      "price_usd_per_1000": {"search": 15.0, "details": 15.0, "match": 15.0, "autocomplete": 15.0, "ask": 30.0, "search_premium": 18.75, "details_premium": 18.75, "ask_premium": 36.0},
+      "_price_basis": "https://foursquare.com/pricing/ (Pro $15.00/1k at 501-100k calls/month after 500 free; Premium $18.75/1k; Ask Pro $30/1k, Ask Premium $36/1k). Read 2026-11-08.",
+      "_cache_basis": "Usage guidelines: fsq_place_id may be cached without limit; other attributes: no caching for Pay-as-you-Go/Sandbox. Hence cache_ttl_s = 0."
+    },
+    "yelp": {
+      "enabled": true,
+      "reason": "",
+      "env": ["YELP_API_KEY"],
+      "env_optional": ["YELP_CLIENT_ID"],
+      "rate_limit_qps": 5,
+      "endpoint_qps": {},
+      "daily_request_cap": 200,
+      "daily_usd_cap": 3.0,
+      "cache_ttl_s": 3600,
+      "store_review_excerpts": false,
+      "price_usd_per_1000": {"search": 7.63, "match": 7.63, "details": 7.63, "reviews": 7.63, "autocomplete": 7.63},
+      "_price_basis": "ESTIMATE: Yelp sells monthly plans (Base listed at $229/month for 30,000 calls => ~$7.63/1k). Exact per-call price was not visible in the docs; see https://business.yelp.com/data/products/places-api/ and https://docs.developer.yelp.com/docs/places-faq. Trial calls (5,000/30 days) are 'strictly for evaluation and not for commercial deployment'.",
+      "_cache_basis": "Yelp API Terms §5(a) and Places FAQ: content may be cached at most 24 hours; business IDs may be stored for back-end matching. cache_ttl_s 3600 is in-memory only."
+    },
+    "google": {
+      "enabled": false,
+      "reason": "Disabled by policy: the project owner's rule is 'no Google data', and Google Maps Platform terms restrict using Places/Geocoding content with or near a non-Google map (this app shows MapLibre over NAIP). See docs/compliance/API_TERMS_REVIEW.md. Do not enable without a human/legal decision.",
+      "env": ["GOOGLE_MAPS_API_KEY"],
+      "rate_limit_qps": 5,
+      "endpoint_qps": {},
+      "daily_request_cap": 100,
+      "daily_usd_cap": 2.0,
+      "cache_ttl_s": 0,
+      "request_enterprise_fields": false,
+      "address_validation_enabled": false,
+      "price_usd_per_1000": {"geocode": 5.0, "text_search_pro": 32.0, "text_search_enterprise": 35.0, "details_pro": 17.0, "details_enterprise": 20.0, "address_validation": 17.0},
+      "_price_basis": "https://developers.google.com/maps/billing-and-pricing/pricing (lowest tier, read 2026-11-08; monthly free caps per SKU not applied here so estimates are conservative). Billing is at the highest SKU any requested field triggers.",
+      "_cache_basis": "Places/Geocoding policies: place IDs may be stored indefinitely; lat/lng may be cached up to 30 consecutive days. cache_ttl_s 0 (no caching)."
+    }
+  },
+  "categories": {
+    "_doc": "Normalized category keys (same words as conf/places_categories.json, plus a few) -> per-provider filters and the raw provider categories that map back to the key. Foursquare is queried by text (category ids are not mapped here); its raw category names are matched by keyword.",
+    "restaurant": {"yelp": ["restaurants"], "google": ["restaurant"], "fsq_words": ["restaurant", "diner", "steakhouse", "pizzeria", "bistro", "grill"]},
+    "cafe": {"yelp": ["coffee", "cafes"], "google": ["cafe", "coffee_shop"], "fsq_words": ["café", "cafe", "coffee"]},
+    "bar": {"yelp": ["bars"], "google": ["bar", "pub"], "fsq_words": ["bar", "pub", "brewery"]},
+    "grocery": {"yelp": ["grocery"], "google": ["grocery_store", "supermarket"], "fsq_words": ["grocery", "supermarket"]},
+    "gas_station": {"yelp": ["servicestations"], "google": ["gas_station"], "fsq_words": ["gas station", "fuel station"]},
+    "pharmacy": {"yelp": ["pharmacy"], "google": ["pharmacy", "drugstore"], "fsq_words": ["pharmacy", "drugstore"]},
+    "hotel": {"yelp": ["hotels"], "google": ["lodging", "hotel"], "fsq_words": ["hotel", "motel", "inn"]},
+    "school": {"yelp": ["education"], "google": ["school", "primary_school", "secondary_school"], "fsq_words": ["school"]},
+    "park": {"yelp": ["parks"], "google": ["park"], "fsq_words": ["park"]},
+    "hospital": {"yelp": ["hospitals"], "google": ["hospital"], "fsq_words": ["hospital"]},
+    "church": {"yelp": ["churches"], "google": ["church", "place_of_worship"], "fsq_words": ["church", "place of worship"]},
+    "gym": {"yelp": ["gyms", "fitness"], "google": ["gym", "fitness_center"], "fsq_words": ["gym", "fitness"]},
+    "airport": {"yelp": ["airports"], "google": ["airport"], "fsq_words": ["airport"]},
+    "marina": {"yelp": ["boating"], "google": ["marina"], "fsq_words": ["marina", "harbor"]}
+  },
+  "resolve": {
+    "_doc": "Cross-provider matching thresholds. A merge needs name AND (distance OR address); phone only relaxes the name threshold and still needs distance. Same-provider records never merge.",
+    "max_dist_m": 75.0,
+    "name_min": 0.82,
+    "name_min_with_address": 0.6,
+    "address_min": 0.85,
+    "max_dist_with_address_m": 300.0,
+    "name_min_with_phone": 0.5,
+    "max_dist_with_phone_m": 150.0,
+    "conflict_dist_m": 120.0
+  }
+}
