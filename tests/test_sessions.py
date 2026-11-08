@@ -44,7 +44,8 @@ def test_areas_and_pins(tmp_path):
     a = c.post("/api/v1/areas", json={"name": "My cove", "geometry": poly}, headers=A).json()
     assert [x["name"] for x in c.get("/api/v1/areas", headers=A).json()["areas"]] == ["My cove"]
     assert c.post("/api/v1/areas", json={"name": "pt", "geometry": {"type": "Point", "coordinates": [0, 0]}}, headers=A).status_code == 400
-    p = c.post("/api/v1/pins", json={"session_id": "s1", "msg_id": "a3", "title": "63 lakefront houses"}, headers=A).json()
+    sid = c.post("/api/v1/sessions", json={"title": "t"}, headers=A).json()["id"]
+    p = c.post("/api/v1/pins", json={"session_id": sid, "msg_id": "a3", "title": "63 lakefront houses"}, headers=A).json()
     assert len(c.get("/api/v1/pins", headers=A).json()["pins"]) == 1
     assert c.delete(f"/api/v1/pins/{p['id']}", headers=A).status_code == 200
     assert c.delete(f"/api/v1/areas/{a['id']}", headers=A).status_code == 200

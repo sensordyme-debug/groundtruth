@@ -185,8 +185,8 @@ def delete_area(aid: str, x_gt_owner: str | None = Header(None)) -> dict[str, An
 
 # ---------------- pinned results ----------------
 class PinIn(BaseModel):
-    session_id: str
-    msg_id: str
+    session_id: str = Field(..., max_length=64)
+    msg_id: str = Field(..., max_length=64)
     title: str = Field(..., max_length=200)
 
 
@@ -203,6 +203,8 @@ def list_pins(x_gt_owner: str | None = Header(None)) -> dict[str, Any]:
 def create_pin(b: PinIn, x_gt_owner: str | None = Header(None)) -> dict[str, Any]:
     o, pid = _owner(x_gt_owner), uuid.uuid4().hex[:12]
     with _LOCK:
+        if not _db().execute("SELECT 1 FROM sessions WHERE id=? AND owner=?", (b.session_id, o)).fetchone():
+            raise HTTPException(404, "no such session")  # pins only into the caller's own sessions
         _db().execute("INSERT INTO pins VALUES (?,?,?,?,?,?)", (pid, o, b.session_id, b.msg_id, b.title, time.time()))
     return {"id": pid}
 

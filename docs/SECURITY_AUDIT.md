@@ -163,3 +163,15 @@ appears as 127.0.0.1, so in practice this is a global limit. That is fine for a 
 ```
 Make the same change for `v2assets`. For the investigation store (`investigate.py:get`), add
 `if not re.fullmatch(r"[0-9a-f]{12}", inv_id or ""): return None`.
+
+## Status after Red Elimination Sprint 2 (2026-11-08)
+| ID | Status | Evidence |
+|---|---|---|
+| S1 no authentication | **Fixed** (code + tests). Every `/api/` route except `/health` and `/auth/*` needs a Bearer token or a session cookie; 401 otherwise. Tailnet membership is not treated as authentication. **Live API still runs `GROUNDTRUTH_AUTH=off`** (development mode set in `scripts/api_branch.sh`) until the owner switches it on | `api/auth.py`, `tests/test_auth.py` (unauthenticated, malformed, unknown, valid, cookie login/logout, rate limit, bootstrap), `docs/AUTH.md` |
+| S3 paid calls unauthenticated | **Fixed with S1** (`/places/search` is behind auth); spend caps unchanged | same |
+| S5 client-chosen owner | **Fixed when auth is on.** The owner is derived on the server from the principal, and a forged `X-GT-Owner` is overwritten. `create_pin` now requires a session owned by the caller; `session_id`/`msg_id` ≤ 64 chars. Still open: `AreaIn.geometry` has no size limit | `api/auth.py` middleware, `api/sessions.py`, `tests/test_auth.py::test_sessions_are_per_user_even_with_forged_header`, `::test_pin_only_into_own_session` |
+| S6 investigations no owner check | **Fixed.** read / cancel / evidence / feedback / report give 404 for another user's investigation; legacy unowned ones are hidden while auth is on; `context.previous` from another user is dropped. Exports are served only to their owner (code only, not yet covered by a test) | `api/investigations_api.py::_owned`, `api/app.py::export_file`, `tests/test_auth.py::test_investigation_ownership_no_idor` |
+
+Secrets: tokens are never logged or printed. The bootstrap writes `data/app/v1/admin_token` (0600) and logs the path
+only. Only SHA-256 hashes are stored in `users.json`. Nothing is in the frontend bundle; the sign-in page sends the
+typed token once and keeps nothing.

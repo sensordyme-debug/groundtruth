@@ -22,6 +22,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "engine"))
 from groundtruth import config  # noqa: E402
 
+import _gt_auth  # noqa: E402
+
 TYPES = [  # (name, OSM reference file, place) — places chosen away from the Lake Norman label cluster
     ("swimming_pool", "osm_swimming_pool", "Ballantyne"),
     ("parking_lot", "osm_parking_lot", "Ballantyne"),
@@ -32,7 +34,7 @@ K = 24
 
 
 def post(base, path, body):
-    r = urllib.request.Request(base + path, data=json.dumps(body).encode(), headers={"Content-Type": "application/json"})
+    r = urllib.request.Request(base + path, data=json.dumps(body).encode(), headers=_gt_auth.headers({"Content-Type": "application/json"}))
     t = time.perf_counter()
     d = json.load(urllib.request.urlopen(r, timeout=600))
     return d, (time.perf_counter() - t) * 1000
@@ -103,7 +105,7 @@ def sheet(feats, hits, path):
         d = 0.00035
         url = f"http://127.0.0.1:8000/api/v1/crop?bbox={g.x - d:.6f},{g.y - d * 0.82:.6f},{g.x + d:.6f},{g.y + d * 0.82:.6f}&px={S}"
         try:
-            im = Image.open(io.BytesIO(urllib.request.urlopen(url, timeout=60).read())).convert("RGB").resize((S, S))
+            im = Image.open(io.BytesIO(urllib.request.urlopen(urllib.request.Request(url, headers=_gt_auth.headers()), timeout=60).read())).convert("RGB").resize((S, S))
         except Exception:  # noqa: BLE001
             im = Image.new("RGB", (S, S), "grey")
         x, y = (i % cols) * (S + 4), (i // cols) * (S + 4)

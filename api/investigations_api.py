@@ -41,6 +41,22 @@ def _policy(text: str) -> str | None:
     return None
 
 
+def _owned(inv_id: str, owner: str | None):
+    """The investigation if it belongs to the caller, else 404 (never 403: an id must not reveal that it exists).
+    With auth on, the owner header is set by the server from the authenticated user (api/auth.py), never the client."""
+    from api import auth
+    from groundtruth import investigate as I
+    inv = I.get(inv_id)
+    if inv is None:
+        raise HTTPException(404, "no such investigation")
+    inv_owner = (inv.context or {}).get("_owner")
+    if auth.enabled() and (not inv_owner or inv_owner != owner):
+        raise HTTPException(404, "no such investigation")
+    if not auth.enabled() and inv_owner and owner and inv_owner != owner:
+        raise HTTPException(404, "no such investigation")
+    return inv
+
+
 def _view(inv, features: bool) -> dict[str, Any]:
     d = inv.model_dump(mode="json")
     if not features and d.get("result"):
@@ -55,7 +71,12 @@ def create(b: InvIn, x_gt_owner: str | None = Header(None)) -> dict[str, Any]:
 
     if len(json.dumps(b.context)) > 200_000:
         raise HTTPException(413, "context too large")
-    ctx = {**b.context, "_owner": (x_gt_owner or "")[:64]}  # the anonymous browser id (lists "my reports"), never a person
+    ctx = {**b.context, "_owner": (x_gt_owner or "")[:64]}  # the owner id (server-derived when auth is on), never a person
+    if ctx.get("previous"):  # a follow-up may only start from the caller's own investigation
+        try:
+            _owned(str(ctx["previous"]), x_gt_owner)
+        except HTTPException:
+            ctx.pop("previous")
     inv = I.start(b.objective, ctx, lambda year: eng(None, year), _policy)
     if inv.status == "needs_input" and inv.summary == "fallback:chat":
         return {"fallback": "chat", "id": inv.id}
@@ -84,41 +105,33 @@ def list_mine(limit: int = 30, x_gt_owner: str | None = Header(None)) -> dict[st
 
 
 @router.get("/investigations/{inv_id}")
-def read(inv_id: str, features: bool = Query(False)) -> dict[str, Any]:
-    from groundtruth import investigate as I
-    inv = I.get(inv_id)
-    if inv is None:
-        raise HTTPException(404, "no such investigation")
+def read(inv_id: str, features: bool = Query(False), x_gt_owner: str | None = Header(None)) -> dict[str, Any]:
+    inv = _owned(inv_id, x_gt_owner)
     return _view(inv, features=features and inv.status not in ("planning", "running"))
 
 
 @router.post("/investigations/{inv_id}/cancel")
-def cancel(inv_id: str) -> dict[str, Any]:
+def cancel(inv_id: str, x_gt_owner: str | None = Header(None)) -> dict[str, Any]:
     from groundtruth import investigate as I
-    if I.get(inv_id) is None:
-        raise HTTPException(404, "no such investigation")
+    _owned(inv_id, x_gt_owner)
     I.cancel(inv_id)
     return {"cancelling": inv_id, "note": "the step already running finishes; later steps are skipped"}
 
 
 @router.get("/investigations/{inv_id}/features/{fid}/evidence")
-def evidence(inv_id: str, fid: str) -> dict[str, Any]:
+def evidence(inv_id: str, fid: str, x_gt_owner: str | None = Header(None)) -> dict[str, Any]:
     from groundtruth import investigate as I
-    inv = I.get(inv_id)
-    if inv is None:
-        raise HTTPException(404, "no such investigation")
+    inv = _owned(inv_id, x_gt_owner)
     return I.feature_evidence(inv, fid)
 
 
 @router.post("/investigations/{inv_id}/feedback")
-def feedback(inv_id: str, b: FeedbackIn) -> dict[str, Any]:
+def feedback(inv_id: str, b: FeedbackIn, x_gt_owner: str | None = Header(None)) -> dict[str, Any]:
     """A human verdict on one result: recorded as human evidence on the investigation and appended to a versioned
     feedback journal (data/app/v1/feedback/, separate from the immutable labels in data/labels/)."""
     from groundtruth import config
     from groundtruth import investigate as I
-    inv = I.get(inv_id)
-    if inv is None:
-        raise HTTPException(404, "no such investigation")
+    inv = _owned(inv_id, x_gt_owner)
     concept = (inv.plan.targets[0] if inv.plan and inv.plan.targets else "")
     rec = {"t": time.time(), "investigation": inv_id, "feature_id": b.feature_id, "verdict": b.verdict, "note": b.note,
            "concept": concept, "scope": (inv.plan.scope or {}).get("label") if inv.plan else None, "versions": inv.versions}
@@ -135,10 +148,8 @@ def feedback(inv_id: str, b: FeedbackIn) -> dict[str, Any]:
 
 
 @router.get("/investigations/{inv_id}/report.md")
-def report(inv_id: str) -> PlainTextResponse:
+def report(inv_id: str, x_gt_owner: str | None = Header(None)) -> PlainTextResponse:
     from groundtruth import investigate as I
-    inv = I.get(inv_id)
-    if inv is None:
-        raise HTTPException(404, "no such investigation")
+    inv = _owned(inv_id, x_gt_owner)
     return PlainTextResponse(I.report_markdown(inv), media_type="text/markdown",
                              headers={"Content-Disposition": f'attachment; filename="groundtruth-{inv_id}.md"'})

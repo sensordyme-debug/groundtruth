@@ -153,7 +153,7 @@ def calibrate(index, feats: list[dict[str, Any]], positives: Sequence[str], nega
         sp = float((P @ v).max())
         sn = float((N @ v).max()) if N is not None else -1.0
         if sp >= tau and sp > sn + margin:
-            f["properties"].update(sim_example=round(sp, 3), sim_threshold=round(tau, 3),
+            f["properties"].update(sim_example=round(sp, 3), sim_threshold=round(tau, 3), sim_bg_quantile=float(conf.get("bg_quantile", 0.995)),
                                    **({"sim_not_this": round(sn, 3)} if N is not None else {}))
             kept.append(f)
     # keep the scan's own ranking (patch-level score): re-sorting by the coarser cell similarity measurably hurt

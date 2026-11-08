@@ -2,9 +2,10 @@
 conf/risk.json. Every fact is a per-feature property so a result can be explained (the WHY line).
 
   flood_zone, flood_kind ("100yr" | "500yr" | None), flood_floodway, bfe_m, flood_covered   FEMA NFHL (data/risk/<v>/flood)
+  firm_panel, flood_map_effective (YYYY-MM-DD)   the FEMA FIRM panel under the result and its effective date (data/firm_panels/<v>)
   shore_dist_m, shore_name                                                                  OSM water (data/risk/<v>/shore)
   ground_elev_m, elev_above_bfe_m, elev_bfe_status                                          3DEP lidar DTM − FEMA STATIC_BFE
-  height_m (lidar nDSM p90 when the feature has none), slope_deg, canopy_over_pct           3DEP lidar (+ NAIP colour rule)
+  height_m (lidar nDSM p90 when the feature has none), slope_deg, canopy_over_pct           3DEP lidar (+ NAIP NDVI), data/canopy/<v>
   minutes_to_<category>                                                                     Valhalla isochrone bands
 
 Geometry in EPSG:4326, measurement in EPSG:32617. Data: risk products under config.data_dir("risk"); lidar from
@@ -106,6 +107,28 @@ def _county_prepared(boundary_json: str):
     return prep(shape(json.loads(boundary_json)["geometry"]))
 
 
+@lru_cache(maxsize=2)
+def _panels(path: str, _mtime: float):
+    from shapely.strtree import STRtree
+
+    fc = json.loads(Path(path).read_text())["features"]
+    geoms = [shape(f["geometry"]) for f in fc]
+    return STRtree(geoms), geoms, [f["properties"] for f in fc]
+
+
+def firm_panel(g) -> tuple[str | None, str | None]:
+    """(FIRM panel id, its effective date) for the panel containing the geometry's representative point; (None, None)
+    when the panel layer isn't built or the point is outside every panel. Never a fetch or file date."""
+    p = config.data_dir("firm_panels") / "panels.geojson"
+    if not p.exists():
+        return None, None
+    tree, geoms, props = _panels(str(p), p.stat().st_mtime)
+    pt = g.representative_point()
+    for j in tree.query(pt, predicate="intersects"):
+        return props[int(j)].get("firm_pan"), props[int(j)].get("eff_date")
+    return None, None
+
+
 def flood_facts(feats: Sequence[dict[str, Any]], boundary: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     """Per feature: flood_zone (FEMA FLD_ZONE of the most severe zone it touches), flood_kind (100yr | 500yr | None),
     flood_floodway, bfe_m (FEMA STATIC_BFE in metres where published, else None), flood_overlap_pct (share of the
@@ -124,6 +147,7 @@ def flood_facts(feats: Sequence[dict[str, Any]], boundary: dict[str, Any] | None
     for g in gs:
         fact = {"flood_zone": None, "flood_kind": None, "flood_floodway": False, "bfe_m": None, "flood_overlap_pct": 0.0,
                 "flood_covered": bool(cov.intersects(g)) if cov is not None else True}
+        fact["firm_panel"], fact["flood_map_effective"] = firm_panel(g)
         hits = [polys[int(j)] for j in tree.query(g, predicate="intersects")] if tree is not None else []
         if hits:
             def rank(h):
@@ -182,7 +206,7 @@ def shore_facts(feats: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
     return out
 
 
-# ------------------------------------------------------------------ lidar rasters (3DEP 2016 + NAIP colour rule)
+# ------------------------------------------------------------------ lidar rasters (3DEP 2016; canopy/slope from data/canopy/<v>)
 def lidar_root() -> Path:
     d = config.data_dir("lidar", config.data_version("lidar_risk")) if _has_key("lidar_risk") else None
     return d if d is not None and d.exists() else config.data_dir("lidar")
@@ -221,9 +245,16 @@ def _raster_path(place: str, kind: str) -> Path | None:
     folder = place.replace(" ", "_")
     if kind in ("dtm", "ndsm", "dsm"):
         p = lidar_root() / folder / f"{kind}.tif"
-    else:  # slope, canopy (risk products)
+    elif _has_key("canopy"):  # slope, canopy: data/canopy/<v>/<Place>/ (scripts/build_canopy.py)
+        p = config.data_dir("canopy") / folder / f"{kind}.tif"
+    else:  # legacy location (scripts/build_risk_layers.py rasters)
         p = risk_dir() / "lidar" / folder / f"{kind}.tif"
     return p if p.exists() else None
+
+
+def canopy_meta(place: str) -> dict[str, Any]:
+    p = config.data_dir("canopy") / place.replace(" ", "_") / "meta.json"
+    return json.loads(p.read_text()) if p.exists() else {}
 
 
 def lidar_meta(place: str) -> dict[str, Any]:
@@ -328,17 +359,20 @@ def canopy_buffer(f: dict[str, Any], concept: str | None = None) -> float:
 
 
 def canopy_facts(feats: Sequence[dict[str, Any]], concept: str | None = None) -> list[dict[str, Any]]:
-    """canopy_over_pct: % of the footprint (grown by conf canopy.buffer_m for the concept: pools +2 m, because an outline
-    is the visible water) whose 1 m cell is canopy (lidar nDSM ≥ 3 m AND the NAIP 2022 pixel is green)."""
+    """canopy_over_pct: % of the measured cells of the footprint (grown by conf canopy.buffer_m for the concept: pools
+    +2 m, because an outline is the visible water) that are canopy in data/canopy/<v>/<Place>/canopy.tif (lidar nDSM
+    ≥ 3 m, not an Overture building, NAIP 2022 NDVI ≥ 0.2 nearby; scripts/build_canopy.py). None (canopy_status
+    "unavailable") outside the lidar places or where every cell is nodata (no lidar returns); never 0 for unknown."""
     def red(v):
         v = v[v != 255]
         return round(100.0 * float((v == 1).mean()), 1) if len(v) else None
 
     v, _ = raster_values(feats, "canopy", red, lambda f: canopy_buffer(f, concept))
-    return [{"canopy_over_pct": x} for x in v]
+    return [{"canopy_over_pct": x, "canopy_status": "measured" if x is not None else "unavailable"} for x in v]
 
 
 def slope_facts(feats: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
+    """slope_deg: median DTM slope (whole degrees, data/canopy/<v>/<Place>/slope.tif) in the footprint; None outside."""
     v, _ = raster_values(feats, "slope", lambda a: round(float(np.median(a[a != 255])), 1) if (a != 255).any() else None)
     return [{"slope_deg": x} for x in v]
 

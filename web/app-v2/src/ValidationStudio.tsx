@@ -151,6 +151,8 @@ export default function ValidationStudio({ map, onToast }: { map: GtMap | null; 
         <div className="gt-vs-metrics" data-testid="vs-metrics">
           <div style={{ fontWeight: 500, fontSize: 13 }}>Measured from human reviews</div>
           <MetricsTable m={metrics} />
+          <div style={{ fontWeight: 500, fontSize: 13 }}>By geographic holdout group</div>
+          <HoldoutTable m={metrics} />
           <a className="gt-pill gt-pill-a" href="/api/v1/validation/export?format=geojson" download><Download size={13} />Export labels (GeoJSON)</a>
           <a className="gt-pill gt-pill-a" href="/api/v1/validation/export?format=csv" download><Download size={13} />CSV</a>
         </div>)}
@@ -167,5 +169,19 @@ function MetricsTable({ m }: { m: any }) {
         <tr key={k}><td>{k}</td><td>{v.n_reviewed ?? 0} / {v.n_samples ?? "—"}</td><td>{v.precision != null ? Number(v.precision).toFixed(2) : "—"}</td>
           <td>{Array.isArray(v.precision_ci95) ? v.precision_ci95.map((x: number) => Number(x).toFixed(2)).join("–") : "—"}</td>
           <td>{v.recall?.status === "measured" ? Number(v.recall.recall).toFixed(2) : "not measurable"}</td></tr>))}</tbody></table>
+  );
+}
+
+/** Precision per geographic holdout group: does the detector hold up away from where it was tuned? */
+function HoldoutTable({ m }: { m: any }) {
+  const rows = Object.entries(m.classes ?? {}).flatMap(([cls, v]: [string, any]) =>
+    Object.entries(v.by_holdout_group ?? {}).map(([g, b]: [string, any]) => ({ cls, g, b })));
+  if (!rows.length) return null;
+  return (
+    <table className="gt-vs-table" data-testid="vs-holdout"><thead><tr><th>Class</th><th>Holdout group</th><th>Reviewed</th><th>Precision</th><th>95 % CI</th></tr></thead>
+      <tbody>{rows.map(({ cls, g, b }) => (
+        <tr key={cls + g}><td>{cls}</td><td>{g === "None" ? "—" : g}</td><td>{b.n_reviewed ?? 0} / {b.n_samples ?? "—"}</td>
+          <td>{b.precision != null ? Number(b.precision).toFixed(2) : "not measured"}</td>
+          <td>{Array.isArray(b.precision_ci95) ? b.precision_ci95.map((x: number) => Number(x).toFixed(2)).join("–") : "—"}</td></tr>))}</tbody></table>
   );
 }

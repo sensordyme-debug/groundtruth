@@ -35,11 +35,14 @@ OUT = ROOT / "docs" / "media" / "v3" / "f0"
 TMS = morecantile.tms.get("WebMercatorQuad")
 P = PublicDataProvider(download_scenes=False)
 PLACES = json.loads((config.SENSES_PATH.parent / "places.json").read_text())["places"]
-# (slug, place, year, explicit seam point or None)
+# (slug, place, year, explicit seam point or None). Mosaic v1 covers 2022 for these three places only.
+# Lake Norman: the ticket's point, and the longest detected seamline (the 7 km flight-line seam in the main lake).
+# Myers Park / Matthews have no open water: their seams are scene-footprint edges.
 TARGETS = [("lake_norman", "Lake Norman", 2022, (-80.875, 35.50)),
+           ("lake_norman_main", "Lake Norman", 2022, None),
            ("myers_park", "Myers Park", 2022, None),
-           ("matthews", "Matthews", 2022, None),
-           ("huntersville", "Huntersville", 2020, None)]
+           ("matthews", "Matthews", 2022, None)]
+BENCH_YEARS = [2022]
 
 
 def seam_lines(place: str, year: int):
@@ -61,7 +64,36 @@ def seam_lines(place: str, year: int):
     return out
 
 
-def seam_point(place: str, year: int, given):
+def water_seams(place: str, year: int):
+    """Orthomosaic seamlines on water recorded by the mosaic build (meta.json "water.seams") inside the place bbox."""
+    from shapely.geometry import LineString
+    p = config.DATA / "tiles" / "mosaic" / config.data_version("mosaic") / str(year) / "meta.json"
+    if not p.exists():
+        return []
+    bb = to_measure(box(*PLACES[place]["bbox"]))
+    out = []
+    for s in json.loads(p.read_text()).get("water", {}).get("seams", []):
+        ln = LineString([s["xy0_m"], s["xy1_m"]]).intersection(bb)
+        if not ln.is_empty and ln.length > 200:
+            out.append((ln, s))
+    return out
+
+
+def seam_point(place: str, year: int, given, kind: str = "auto"):
+    """Seam to show: an orthomosaic seamline on water from the mosaic meta when the place has one (kind 'water' or
+    'auto'), else the scene-footprint edge (kind 'footprint'). Returns ((lon, lat), info, LineString in EPSG:32617)."""
+    ws = water_seams(place, year) if kind in ("auto", "water") else []
+    if ws:
+        if given is not None:
+            pt = to_measure(Point(*given))
+            ln, s = min(ws, key=lambda w: w[0].distance(pt))
+        else:
+            ln, s = max(ws, key=lambda w: w[0].length)
+            pt = ln.interpolate(0.5, normalized=True)
+        sp = nearest_points(ln, pt)[0]
+        lon, lat = to_wgs84(sp).coords[0]
+        return (lon, lat), {"seam": "orthomosaic seamline on water (detected)", "detected_step_dn": s["step_dn"],
+                            "seam_length_m": s["length_m"]}, ln
     lines = seam_lines(place, year)
     if given is not None:
         pt = to_measure(Point(*given))
@@ -72,7 +104,8 @@ def seam_point(place: str, year: int, given):
     best = min(cand, key=lambda ln: ln[0].distance(pt))
     sp = nearest_points(best[0], pt)[0]
     lon, lat = to_wgs84(sp).coords[0]
-    return (lon, lat), {"upper": best[1], "lower": best[2], "upper_date": best[3], "lower_date": best[4]}, best[0]
+    return (lon, lat), {"seam": "scene footprint edge", "upper": best[1], "lower": best[2], "upper_date": best[3],
+                        "lower_date": best[4]}, best[0]
 
 
 def decode(png: bytes | None, size: int = 256) -> np.ndarray:
@@ -126,7 +159,19 @@ def seam_step(img: np.ndarray, line_m, z, cx, cy, k: int = 3, control: int = 40)
     c1, _ = step(control)
     c2, _ = step(-control)
     ctrl = float(np.nanmean([c1, c2]))
-    return {"step": round(s, 2), "control": round(ctrl, 2), "ratio": round(s / ctrl, 2) if ctrl else None, "n": n}
+    # the mosaic moves the transition to the medial line of the overlap (up to ~300 m from the raw seam): take the
+    # worst median step over parallel lines across that band too
+    offs = np.arange(-300.0, 300.1, 15.0) / _m_per_px(z, cy)
+    band = [b for b in (step(o)[0] for o in offs) if np.isfinite(b)]
+    bmax = float(max(band)) if band else float("nan")
+    return {"step": round(s, 2), "control": round(ctrl, 2), "ratio": round(s / ctrl, 2) if ctrl else None, "n": n,
+            "band_max_step": round(bmax, 2), "band_ratio": round(bmax / ctrl, 2) if ctrl else None}
+
+
+def _m_per_px(z: int, cy: int) -> float:
+    b = TMS.xy_bounds(morecantile.Tile(0, cy, z))
+    lat = TMS.lnglat((b.left + b.right) / 2, (b.top + b.bottom) / 2)[1]
+    return (b.right - b.left) / 256 * float(np.cos(np.radians(lat)))
 
 
 def shots() -> None:
@@ -160,7 +205,7 @@ def bench(n: int = 50, seed: int = 7) -> None:
         pl = PLACES[names[rng.randrange(len(names))]]["bbox"]
         z = rng.choice([12, 13, 14, 15, 16, 17])
         lon, lat = rng.uniform(pl[0], pl[2]), rng.uniform(pl[1], pl[3])
-        year = rng.choice([2022, 2020])
+        year = rng.choice(BENCH_YEARS)
         t = TMS.tile(lon, lat, z)
         if P.render_tile_mosaic(year, z, t.x, t.y) is None:
             continue

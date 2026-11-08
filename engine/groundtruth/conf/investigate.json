@@ -42,7 +42,12 @@
       "under trees",
       "under canopy",
       "tree cover over",
-      "overhanging"
+      "overhanging",
+      "tree canopy",
+      "heavy canopy",
+      "shaded by trees",
+      "under heavy tree",
+      "under tree canopy"
     ],
     "lakefront": [
       "lakefront",
@@ -161,5 +166,155 @@
     "neg_margin": 0.0,
     "seed": 7,
     "outline_top": 60
+  },
+  "near_layers": {
+    "_doc": "distance conditions ('within 500 m of a light-rail station', 'near I-485') map to an OSM layer in data/layers; the first entry whose words appear wins, so specific phrases come first. 'near' with no distance uses near_default_m and says so as an assumption.",
+    "near_default_m": 400,
+    "layers": [
+      {
+        "words": [
+          "light rail station",
+          "light-rail station",
+          "lynx station",
+          "rail station",
+          "transit station"
+        ],
+        "layer": "osm_light_rail_stations",
+        "label": "a light-rail station"
+      },
+      {
+        "words": [
+          "light rail",
+          "light-rail",
+          "lynx",
+          "blue line"
+        ],
+        "layer": "osm_light_rail",
+        "label": "the light-rail line"
+      },
+      {
+        "words": [
+          "i-485",
+          "i485",
+          "interstate 485",
+          "485"
+        ],
+        "layer": "osm_i485",
+        "label": "I-485"
+      },
+      {
+        "words": [
+          "i-77",
+          "i77",
+          "interstate 77"
+        ],
+        "layer": "osm_i77",
+        "label": "I-77"
+      },
+      {
+        "words": [
+          "i-85",
+          "i85",
+          "interstate 85"
+        ],
+        "layer": "osm_i85",
+        "label": "I-85"
+      },
+      {
+        "words": [
+          "interstate",
+          "motorway",
+          "highway",
+          "freeway"
+        ],
+        "layer": "osm_motorways",
+        "label": "a motorway"
+      },
+      {
+        "words": [
+          "major road",
+          "main road",
+          "arterial"
+        ],
+        "layer": "osm_major_roads",
+        "label": "a major road"
+      },
+      {
+        "words": [
+          "warehouse"
+        ],
+        "layer": "osm_warehouses",
+        "label": "a warehouse"
+      },
+      {
+        "words": [
+          "unc charlotte",
+          "uncc",
+          "campus"
+        ],
+        "layer": "osm_unc_charlotte_campus",
+        "label": "UNC Charlotte's campus"
+      }
+    ]
+  },
+  "steep_slope": {
+    "_doc": "'steep' = a mean slope above deg (lidar 2016 ground model, 1 m). 8.5° ≈ a 15 % grade, a common steep-slope threshold in US land-use codes; stated in the plan as an assumption.",
+    "deg": 8.5
+  },
+  "condition_cues": {
+    "_doc": "phrases that look like a condition. After planning, any cue whose kind was not applied is reported as 'Not applied' in the plan and the headline: a condition is never dropped silently. Place names (the scope) are removed before scanning.",
+    "cues": [
+      [
+        "\\bwithin \\d[\\d.,]* ?(?:m|km|meters?|metres?|kilometers?|kilometres?|miles?|mi|feet|ft)\\b",
+        "near"
+      ],
+      [
+        "\\b(?:near(?:by)?|close to|next to|adjacent to|beside)\\b",
+        "near"
+      ],
+      [
+        "\\b(?:slopes?|steep|hillsides?|grade)\\b",
+        "slope"
+      ],
+      [
+        "\\bfloodways?\\b",
+        "flood"
+      ],
+      [
+        "\\b(?:canopy|trees?|shaded|shade)\\b",
+        "canopy"
+      ],
+      [
+        "\\b(?:older|newer)\\b|\\b(?:built|constructed) (?:before|after|since|in)\\b",
+        "age"
+      ],
+      [
+        "\\b(?:bigger|larger|smaller|wider|narrower) than\\b|\\bat least \\d",
+        "size"
+      ],
+      [
+        "\\b(?:taller|higher|shorter|lower) than\\b",
+        "height"
+      ],
+      [
+        "\\bcompare\\b|\\bbetween 20\\d\\d and 20\\d\\d\\b|\\bchanged?\\b|\\bwhat'?s new\\b",
+        "compare"
+      ],
+      [
+        "\\b(?:vacant|abandoned|unpermitted|illegal|for sale|values?|prices?|insur\\w*|permits?)\\b",
+        "unsupported"
+      ]
+    ]
+  },
+  "scenario_request": {
+    "_doc": "hypothetical high-water questions → the scenario exposure plan (simulate → exposure per target → cluster). Only for places with a scenario in conf/scenarios.json.",
+    "pattern": "\\b(hypothetical|scenario|what if|elevated[- ]water|high[- ]water|water (?:level|rises?|rose)|lake (?:rises?|level)|extreme rain\\w*|flood scenario)\\b",
+    "default_offset_m": 1.0,
+    "facility_within_m": 500,
+    "targets": {
+      "roads": "\\broads?\\b|\\bstreets?\\b|\\btransport",
+      "bridges": "\\bbridges?\\b",
+      "facilities": "\\bfacilit|\\bhospitals?\\b|\\bfire\\b|\\bems\\b|\\bemergency\\b|\\bschools?\\b|\\bpolice\\b|\\bshelters?\\b"
+    }
   }
 }

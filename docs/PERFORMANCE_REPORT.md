@@ -35,3 +35,29 @@ All numbers are measured. "Before" is the start of this sprint (commit `1ce0989`
 ## Memory monitoring
 
 `GET /api/v1/runtime` reports process RSS (anon/file), system MemAvailable and the process's GPU memory. It never initialises CUDA itself.
+
+## Cold start (Red Elimination Sprint 2, 2026-11-08)
+Measured on the PC, same data and code apart from the warm-up order, with `scripts/cold_start_profile.sh blocking`
+(the old order) and `scripts/cold_start_profile.sh` (the new one). One run each, so expect a few seconds of noise.
+The per-phase profile is in `/api/v1/health` → `warmup.phases`.
+
+| Phase (ms) | Old order | New order |
+|---|---|---|
+| engine init | 263 | 216 |
+| models + pick candidates (DINOv2/CLIP load, first embed) | 10,786 | 19,951 |
+| find_all in the warm-up place (index paging) | 26,987 | 22,825 |
+| refine | 526 | 679 |
+| flagship investigation (new: derived set, FEMA, lidar, geography) | 2,199 | 1,874 |
+| LLM ping (laptop) | 1,352 | 1,305 |
+| chat chain, 11 conversational turns | **206,594 before healthy** | after healthy, in the background, yielding to requests |
+| **restart → healthy** | **274.8 s** | **51.8 s** |
+| first flagship investigation after healthy | 2,301 | 1,103 |
+| first plain chat search ("swimming pools") after healthy | 57 | 1,294 |
+
+What changed: the conversational chat chain used to warm before `/health` turned healthy, and it took 207 s of
+the 249 s warm-up. It now runs after healthy, in the background, and yields to real requests. The flagship
+investigation is warmed before healthy instead. Trade-off: a plain chat search in the first ~3½ minutes can take
+~1.3 s instead of ~0.06 s. `GROUNDTRUTH_WARMUP_CHAIN_BLOCKING=1` restores the old order. The three restarts after
+this change reached healthy in 44.0, 46.6 and 41.9 s.
+
+Remaining floor: of the 51.8 s, 46.9 s is the in-process warm-up, mostly model load + first embed (~10–20 s) and index paging for the first scan (~23–27 s); process start is the other ~5 s.

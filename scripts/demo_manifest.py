@@ -3,6 +3,9 @@
   python scripts/demo_manifest.py write           # record the current demo data (run at the checkpoint)
   python scripts/demo_manifest.py verify          # quick: size + mtime for all, sha256 for files ≤ 64 MB
   python scripts/demo_manifest.py verify --full   # sha256 for everything (slow: ~30 GB incl. imagery)
+  add --branch to any of these to use data/BRANCH_MANIFEST.json instead: the demo files PLUS the data versions this
+  branch added (derived, risk, boundaries, validation, canopy, FEMA panels, mosaic). DEMO_MANIFEST.json (demo-final) is
+  never rewritten by --branch.
 Big files (index arrays, NAIP COGs) are hashed only in --full mode; quick mode trusts size + mtime for them.
 """
 import hashlib
@@ -17,7 +20,9 @@ sys.path.insert(0, str(ROOT / "engine"))
 from groundtruth import config  # noqa: E402
 
 SMALL = 64 << 20
-MAN = config.DATA / "DEMO_MANIFEST.json"
+BRANCH = "--branch" in sys.argv
+MAN = config.DATA / ("BRANCH_MANIFEST.json" if BRANCH else "DEMO_MANIFEST.json")
+BRANCH_KINDS = ("derived", "risk", "boundaries", "validation", "canopy", "firm_panels")
 
 
 def demo_files() -> dict[str, list[Path]]:
@@ -35,6 +40,12 @@ def demo_files() -> dict[str, list[Path]]:
     groups["boundary"] = sorted((d / "boundary").glob("*"))
     cog = Path(__import__("os").environ.get("GROUNDTRUTH_COG_CACHE", Path.home() / ".cache" / "groundtruth" / "naip"))
     groups["naip_cogs"] = sorted(cog.rglob("*.tif"))
+    if BRANCH:
+        for kind in BRANCH_KINDS:  # the versions conf/data_versions.json selects, never every version on disk
+            groups[kind] = sorted(q for q in config.data_dir(kind).rglob("*") if q.is_file()
+                                  and "reviews" not in q.parts)  # human reviews change by design; not a frozen input
+        tl = d / "cache" / "tiles" / "local"
+        groups["mosaic_meta"] = sorted(q for q in tl.rglob("*.json")) if tl.exists() else []
     return groups
 
 
@@ -97,6 +108,8 @@ def verify(full: bool) -> bool:
 
 if __name__ == "__main__":
     cmd = sys.argv[1] if len(sys.argv) > 1 else "verify"
+    if cmd == "write" and not BRANCH and MAN.exists():
+        sys.exit("refusing to overwrite DEMO_MANIFEST.json (demo-final is frozen); use --branch")
     if cmd == "write":
         write()
     else:

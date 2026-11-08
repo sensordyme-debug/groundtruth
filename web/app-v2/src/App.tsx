@@ -888,6 +888,7 @@ export default function App() {
                 {selEv?.verdict === "confirm"
                   ? <span className="gt-provbadge gt-provbadge-human" data-testid="prov-badge">Human-verified</span>
                   : <span className="gt-provbadge" data-testid="prov-badge">{sel.properties?.provenance === "provider_reported" ? "Provider data · not verified here" : "AI prediction · not human-verified"}</span>}
+                {typeof sel.properties?.sim_example === "number" && <SimilarityWhy p={sel.properties} />}
                 {sel.properties?.why && typeof sel.properties.why === "string" && <div className="gt-why" data-testid="why">{units(String(sel.properties.why), prefs.units)}</div>}
                 {selEv && (
                   <div className="gt-selev" data-testid="feature-evidence">
@@ -1111,4 +1112,24 @@ function acq(d: any): string {
 function shortProvider(x: any): string {
   const n = String(x.dataset_name ?? x.provider ?? "");
   return n.length > 48 ? `${n.slice(0, 46)}…` : n;
+}
+
+/** Why a "Find like this" result matched: its similarity to your examples vs this area's background threshold, and
+ *  (after "Not this") vs the rejected examples. Similarity is not identity: shown as a prediction. */
+function SimilarityWhy({ p }: { p: Record<string, any> }) {
+  const s = Number(p.sim_example), t = Number(p.sim_threshold), n = p.sim_not_this;
+  const margin = t > 0 ? s - t : null;
+  const q = typeof p.sim_bg_quantile === "number" ? p.sim_bg_quantile * 100 : null;
+  return (
+    <div className="gt-simwhy" data-testid="similarity-why">
+      <div className="gt-evpanel-k">Why it matched</div>
+      <div className="gt-simbar" aria-hidden="true">
+        {t > 0 && <span className="gt-simthr" style={{ left: `${Math.max(0, Math.min(100, t * 100))}%` }} />}
+        <span className="gt-simval" style={{ width: `${Math.max(0, Math.min(100, s * 100))}%` }} />
+      </div>
+      <p>Looks like your example: similarity <b>{s.toFixed(2)}</b>{t > 0 ? <> vs a threshold of <b>{t.toFixed(2)}</b> ({q !== null ? `the threshold is more similar than ${q.toFixed(1)} % of patches sampled from this area` : "this area's background threshold"}{margin !== null ? `; margin ${margin.toFixed(2)}` : ""})</> : null}.</p>
+      {typeof n === "number" && <p>Closer to your examples than to the results you rejected ({n.toFixed(2)}).</p>}
+      <p className="gt-srcline">Similarity (DINOv2 image patches, uncalibrated) is a resemblance, not proof that it is the same kind of object.</p>
+    </div>
+  );
 }

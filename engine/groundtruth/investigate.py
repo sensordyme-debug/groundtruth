@@ -85,6 +85,21 @@ class PlacesArgs(BaseModel):
     bbox: list[float] | None = None
 
 
+class SimulateArgs(BaseModel):
+    scenario: str
+    offset_m: float
+
+
+class ExposureArgs(BaseModel):
+    target: Literal["buildings", "roads", "bridges", "facilities"]
+    within_m: float = Field(0, ge=0, le=5000)  # facilities: proximity distance to the extent (0 = touching only)
+
+
+class ClusterArgs(BaseModel):
+    link_m: float = Field(120, gt=0, le=1000)
+    min_size: int = Field(3, ge=2)
+
+
 class FilterArgs(BaseModel):
     where: dict[str, Any]
 
@@ -140,6 +155,12 @@ OPS: dict[str, dict[str, Any]] = {
     "explain": {"args": ExplainArgs, "label": "Measure each result", "why": "the facts behind each result (its WHY line)"},
     "compare_years": {"args": CompareArgs, "label": "Compare with 2020", "why": "what changed between the two imagery years"},
     "rank": {"args": RankArgs, "label": "Order the results", "why": "a documented ordering, not an invented score"},
+    "simulate": {"args": SimulateArgs, "label": "Run the hypothetical scenario",
+                 "why": "SIMULATED: a flat water level on real lidar ground, connected to the lake (not a forecast)"},
+    "exposure": {"args": ExposureArgs, "label": "Find what the scenario touches",
+                 "why": "real features crossed with the hypothetical extent: potential exposure, not impact"},
+    "cluster": {"args": ClusterArgs, "label": "Group exposed buildings",
+                "why": "where exposure concentrates, ranked by a stated rule"},
     "conclude": {"args": EmptyArgs, "label": "Weigh the evidence", "why": "findings graded by their weakest evidence"},
 }
 _INPUT_OPS = {"filter", "explain", "compare_years", "rank"}  # need one upstream feature set
@@ -169,6 +190,7 @@ class InvestigationPlan(BaseModel):
     questions: list[str] = Field(default_factory=list)
     steps: list[PlanStep]
     limitations: list[str] = Field(default_factory=list)
+    unapplied: list[str] = Field(default_factory=list)  # condition phrases the planner could not turn into a step
     planner: str = "rules"
 
     @model_validator(mode="after")
@@ -195,7 +217,7 @@ class InvestigationPlan(BaseModel):
 class Evidence(BaseModel):
     id: str
     step_id: str
-    kind: Literal["scope", "coverage", "detection", "association", "spatial_intersection", "measurement",
+    kind: Literal["scope", "coverage", "detection", "association", "spatial_intersection", "spatial_proximity", "simulation", "measurement",
                   "temporal", "ordering", "human"]
     statement: str
     source: dict[str, Any] = Field(default_factory=dict)  # name, url, date, licence
@@ -210,7 +232,8 @@ class Evidence(BaseModel):
 class Finding(BaseModel):
     id: str
     statement: str
-    nature: Literal["observed", "computed", "model_prediction", "provider_reported", "human_verified", "inference", "assumption", "gap"]
+    nature: Literal["observed", "computed", "model_prediction", "provider_reported", "human_verified", "inference", "assumption", "gap",
+                    "simulated"]
     strength: Strength
     why_strength: str
     evidence_ids: list[str]
@@ -242,6 +265,78 @@ class Investigation(BaseModel):
 # ---------------------------------------------------------------- compiling an objective into a plan
 def _has(t: str, words: list[str]) -> bool:
     return any(w in t for w in words)
+
+
+_UNITS_M = {"m": 1.0, "meter": 1.0, "meters": 1.0, "metre": 1.0, "metres": 1.0, "km": 1000.0, "kilometer": 1000.0,
+            "kilometers": 1000.0, "kilometre": 1000.0, "kilometres": 1000.0, "mi": 1609.344, "mile": 1609.344,
+            "miles": 1609.344, "ft": 0.3048, "feet": 0.3048, "foot": 0.3048}
+
+
+def _near_condition(t: str, nl: dict[str, Any]) -> tuple[str, str, float, bool] | None:
+    """'within 500 m of a light-rail station' / 'near I-485' → (layer, label, metres, assumed_distance). Distances to
+    the shore / lake / water are the shore filter's, never a layer distance."""
+    m = re.search(r"\bwithin (\d+(?:[.,]\d+)?) ?(m|meters?|metres?|km|kilometers?|kilometres?|miles?|mi|feet|foot|ft)\b of "
+                  r"(?:a |an |the )?(?:nearest |closest )?(.{0,40})", t)
+    near = None if m else re.search(r"\b(?:near|close to|next to|adjacent to|beside) (?:a |an |the )?(?:nearest |closest )?(.{0,40})", t)
+    rest = (m.group(3) if m else near.group(1) if near else "")
+    if not rest or re.match(r"(shore|shoreline|lake|water)\b", rest):
+        return None
+    for e in nl["layers"]:
+        if any(re.match(r"" + re.escape(w) + r"s?\b", rest) for w in e["words"]):
+            if m:
+                return e["layer"], e["label"], round(float(m.group(1).replace(",", "")) * _UNITS_M[m.group(2)], 1), False
+            return e["layer"], e["label"], float(nl["near_default_m"]), True
+    return None
+
+
+def _scenario_request(t: str, scope: dict[str, Any] | None, c: dict[str, Any]):
+    """A hypothetical high-water question → (scenario id, offset m, offset assumed?, exposure targets), or None.
+    Only where a scenario is defined for the scope's place (conf/scenarios.json)."""
+    sr = c["scenario_request"]
+    if not scope or not re.search(sr["pattern"], t):
+        return None
+    from groundtruth import scenario as S
+    d = next((x for x in S.conf()["scenarios"] if x["place"] == scope.get("place")), None)
+    if d is None:
+        return None
+    m = re.search(r"\b(\d+(?:\.\d+)?) ?(?:m|meters?|metres?)\b(?: (?:above|over|higher|rise))", t)
+    offs = [float(x) for x in d["offsets_m"]]
+    off, assumed = (float(sr["default_offset_m"]), True)
+    if m:
+        want = float(m.group(1))
+        off, assumed = min(offs, key=lambda o: abs(o - want)), False
+    targets = ["buildings"]
+    for tg, rx in sr["targets"].items():
+        if re.search(rx, t) and tg not in targets:
+            targets.append(tg)
+    return d["id"], off, assumed, targets
+
+
+def _unapplied(objective: str, t: str, c: dict[str, Any], res, p, cons, steps) -> list[str]:
+    """Condition-like phrases (conf condition_cues) whose kind no plan step applies. Scope words are removed first."""
+    scan = t
+    for name in {x for x in ((getattr(res, "matched_text", None) if res is not None else None), p.place) if x}:
+        scan = re.sub(r"\b(?:near|around|in|within|close to|across|inside|of|at)?\s*" + re.escape(name.lower()) + r"\b", " ", scan)
+    applied = {f for f, _, _ in cons}
+    if any(s.op == "simulate" for s in steps):
+        applied |= {"distance", "flood", "near"}
+    if any(s.op == "compare_years" for s in steps) or p.docks_new_since:
+        applied |= {"compare", "age"}
+    if getattr(p, "min_height_m", None):
+        applied.add("height")
+    ok = {"near": {"distance", "shore", "travel"}, "slope": {"slope"}, "flood": {"flood"}, "canopy": {"canopy"},
+          "age": {"age"}, "size": set(), "height": {"height", "elevation"}, "compare": {"compare"}, "unsupported": set()}
+    out: list[str] = []
+    for rx, kind in c["condition_cues"]["cues"]:
+        for mm in re.finditer(rx, scan):
+            if applied & ok.get(kind, set()):
+                continue
+            a, b = mm.start(), mm.end()  # quote a few words around the cue so the person recognises it
+            phrase = re.sub(r"\s+", " ", scan[max(0, scan.rfind(" ", 0, max(0, a - 1)) + 1): (scan.find(" ", b + 1) if scan.find(" ", b + 1) > 0 else len(scan))]).strip(" ,.")
+            phrase = re.sub(r"\s+", " ", " ".join(scan[a:].split()[:6])).strip(" ,.") if kind in ("near", "size", "height") else phrase
+            if phrase and phrase not in out:
+                out.append(phrase)
+    return out
 
 
 def compile_plan(objective: str, context: dict[str, Any] | None = None, prev: Investigation | None = None,
@@ -309,7 +404,10 @@ def compile_plan(objective: str, context: dict[str, Any] | None = None, prev: In
 
     # ---- constraints
     cons: list[tuple[str, dict[str, Any], str]] = []  # (fact, where, words)
-    if _has(t, W["flood_100yr"]):
+    assumptions: list[str] = []
+    if re.search(r"\bfloodways?\b", t):
+        cons.append(("flood", {"in_flood_zone": {"kind": "floodway"}}, "in a FEMA regulatory floodway"))
+    elif _has(t, W["flood_100yr"]):
         cons.append(("flood", {"in_flood_zone": {"kind": "100yr"}}, "in a FEMA 100-year flood zone"))
     elif _has(t, W["flood_500yr"]):
         cons.append(("flood", {"in_flood_zone": {"kind": "500yr"}}, "in a FEMA 100- or 500-year flood zone"))
@@ -335,7 +433,20 @@ def compile_plan(objective: str, context: dict[str, Any] | None = None, prev: In
     if m:
         cons.append(("travel", {"within_minutes_of": {"category": m.group(3).strip(), "minutes": float(m.group(2)), "outside": True}},
                      f"more than {m.group(2)} minutes from the nearest {m.group(3).strip()}"))
-    flood_topic = _has(t, W["flood_any"] + W["flood_100yr"] + W["flood_500yr"])
+    m = re.search(r"\bslopes? (?:of |steeper than |more than |greater than |over |above )(\d+(?:\.\d+)?) ?(?:°|deg|degrees?)\b", t)
+    if m:
+        cons.append(("slope", {"slope_deg": {"min": float(m.group(1))}}, f"on slopes steeper than {float(m.group(1)):g}°"))
+    elif re.search(r"\bsteep(?:er)?\b|\bhillsides?\b|\bon (?:a |the )?(?:hill|slope)s?\b", t):
+        dg = float(c["steep_slope"]["deg"])
+        cons.append(("slope", {"slope_deg": {"min": dg}}, f"on steep slopes (more than {dg:g}°)"))
+        assumptions.append(f"'Steep' read as a mean slope above {dg:g}° (about a 15 % grade), from the 2016 lidar ground model")
+    near = _near_condition(t, c["near_layers"])
+    if near:
+        layer, label, metres, assumed = near
+        cons.append(("distance", {"within_m_of": {"layer": layer, "m": metres}}, f"within {metres:g} m of {label}"))
+        if assumed:
+            assumptions.append(f"'Near' read as within {metres:g} m of {label}")
+    flood_topic = _has(t, W["flood_any"] + W["flood_100yr"] + W["flood_500yr"]) or bool(re.search(r"\bfloodways?\b", t))
     rank = _has(t, W["rank"]) or flood_topic
 
     # ---- targets
@@ -354,6 +465,7 @@ def compile_plan(objective: str, context: dict[str, Any] | None = None, prev: In
 
     steps: list[PlanStep] = []
     limitations: list[str] = []
+    scen = _scenario_request(t, scope, c) if not follow else None
 
     def add(op: str, args: dict[str, Any], deps: list[str] | None = None, label: str | None = None) -> str:
         sid = f"s{len(steps) + 1}"
@@ -378,7 +490,33 @@ def compile_plan(objective: str, context: dict[str, Any] | None = None, prev: In
         if scope:
             add("resolve_area", scope)
             add("check_coverage", scope, ["s1"])
-        if homes:
+        if scen:
+            sid, off, assumed_off, targets_x = scen
+            sim = add("simulate", {"scenario": sid, "offset_m": off}, ["s2"],
+                      label=f"Run the hypothetical scenario: water {off:g} m above FEMA's base flood elevation")
+            exp_ids = []
+            for tg in targets_x:
+                args = {"target": tg, "within_m": float(c["scenario_request"]["facility_within_m"]) if tg == "facilities" else 0}
+                exp_ids.append(add("exposure", args, [sim], label={"buildings": "Find buildings the scenario touches",
+                                                                   "roads": "Find major roads it crosses",
+                                                                   "bridges": "Find bridges it crosses",
+                                                                   "facilities": "Find community facilities near it"}[tg]))
+            last = add("cluster", {}, exp_ids, label="Group exposed buildings and rank the clusters")
+            target_desc = "infrastructure exposed to a hypothetical high-water scenario"
+            targets.append(target_desc)
+            if assumed_off:
+                limitations.append(f"Scenario level not stated: I used FEMA's base flood elevation + {off:g} m")
+            limitations.append("SIMULATED scenario: a flat water level on 2016 lidar ground, connected to the lake. Not a "
+                               "rainfall, drainage or flood forecast")
+            cons = []  # the scenario steps carry the conditions
+        elif homes and scope.get("place") and not (config.data_dir("derived") / scope["place"].replace(" ", "_") / "houses.geojson").exists():
+            homes = False  # no house linkage here: list the detected pools instead, and say so
+            limitations.append(f"Homes are linked to their pools only for Lake Norman; in {scope['place']} I list the detected "
+                               "pools themselves (a pool is not proof of which home it belongs to)")
+            p.target_kind, p.concept, p.concept_query = "concept", "swimming_pool", "pools"
+        if scen:
+            pass  # the scenario steps were added above
+        elif homes:
             if not scope.get("place"):
                 return None, {"question": "Homes with pools are precomputed per neighbourhood. Which one?",
                               "suggestions": [f"in {x}" for x in c["suggest_places"][:1]], "reason": "derived sets need a place"}
@@ -419,12 +557,13 @@ def compile_plan(objective: str, context: dict[str, Any] | None = None, prev: In
         facts.append(fact)
     if flood_topic:
         facts += [f for f in ("flood", "elevation", "shore") if f not in facts]
-    if facts or rank:
+    if (facts or rank) and not scen:
         last = add("explain", {"facts": facts or ["flood", "elevation", "shore"], "label": target_desc or None},
                    [last] if last and last != "prev" else [])
-    if rank:
+    if rank and not scen:
         last = add("rank", {"keys": [k["prop"] for k in c["rank_rule"]["keys"]]}, [last] if last and last != "prev" else [])
-    if re.search(r"\b(since 20\d\d|new since|built since|changed|what changed|compare with 2020)\b", t) and \
+    if re.search(r"\b(since 20\d\d|new since|built since|changed|what changed|compare with 2020|what'?s new)\b|"
+                 r"\bcompare\b.*\b20(?:1\d|2[0-2])\b|\bbetween 20\d\d and 20\d\d\b|\b2020 (?:vs\.?|versus|and|to) 2022\b", t) and \
             not p.docks_new_since and not homes:
         last = add("compare_years", {"from_year": 2020}, [last] if last and last != "prev" else [])
     add("conclude", {}, [s.id for s in steps])
@@ -434,18 +573,21 @@ def compile_plan(objective: str, context: dict[str, Any] | None = None, prev: In
             if s.op in _INPUT_OPS and not s.depends_on:
                 s.depends_on = []
         limitations.append("Starts from the previous investigation's results")
-    limitations += geo_note
+    limitations += geo_note + assumptions
+    unapplied = _unapplied(objective, t, c, res, p, cons, steps)
+    for u in unapplied:
+        limitations.insert(0, f"Not applied: “{u}”. Groundtruth can't test that condition yet, so these results ignore it")
     try:
         plan = InvestigationPlan(objective=objective, scope=scope, targets=targets, constraints=[w for _, _, w in cons],
                                  time={"imagery": 2022, "compare": 2020 if any(s.op == "compare_years" for s in steps) else None},
                                  questions=_questions(target_desc, cons, flood_topic, rank), steps=steps,
-                                 limitations=limitations)
+                                 limitations=limitations, unapplied=unapplied)
     except ValidationError as e:
         if follow:  # follow-up input steps legitimately have no in-plan dependency
             plan = InvestigationPlan.model_construct(objective=objective, scope=scope, targets=targets,
                                                      constraints=[w for _, _, w in cons], time={"imagery": 2022},
                                                      questions=_questions(target_desc, cons, flood_topic, rank),
-                                                     steps=steps, limitations=limitations, planner="rules")
+                                                     steps=steps, limitations=limitations, unapplied=unapplied, planner="rules")
             _validate_follow_up(plan)
         else:
             return None, {"error": f"plan rejected before execution: {e.errors()[0]['msg']}"}
@@ -516,7 +658,11 @@ def new(objective: str, context: dict[str, Any] | None = None) -> Investigation:
 
 
 def cancel(inv_id: str) -> None:
-    _CANCEL.add(inv_id)
+    """Cooperative: the running step finishes, later steps are skipped. A finished investigation is left as it is
+    (and its id is not kept, so the set can't grow)."""
+    inv = _STORE.get(inv_id)
+    if inv is None or inv.status in ("planning", "running", "needs_input"):
+        _CANCEL.add(inv_id)
 
 
 def _versions() -> dict[str, Any]:
@@ -593,6 +739,11 @@ def run(inv: Investigation, engine, prev: Investigation | None = None) -> Invest
 
 class StepTimeout(RuntimeError):
     pass
+
+
+def _display_allowed(pr) -> bool:
+    """A provider whose content may be shown to users (conf providers.json display_enabled; default true)."""
+    return bool(pr.pconf.get("display_enabled", True))
 
 
 class _Skip(RuntimeError):
@@ -743,12 +894,18 @@ def _exec(s: PlanStep, eng, src, inv: Investigation, envs, feats):
         return env, fs
     if s.op == "search_providers":
         from groundtruth.places import build_providers, search_places
-        usable = [n for n, pr in build_providers().items() if pr.status()["enabled"]]
+        provs = build_providers()
+        usable = [n for n, pr in provs.items() if pr.status()["enabled"] and _display_allowed(pr)]
+        hidden = [n for n, pr in provs.items() if pr.status()["enabled"] and not _display_allowed(pr)]
+        for n in hidden:  # e.g. Yelp: enabled for testing, but its display requirements are not met → never shown
+            note = f"{n.title()} listings are not shown: {(provs[n].pconf.get('display_blocker') or 'display requirements not met')}"
+            if note not in inv.plan.limitations:
+                inv.plan.limitations.append(note)
         if not usable:
             s.detail = "skipped: no place-provider key is installed (Foursquare / Yelp); Google is disabled by policy"
             raise _Skip(s.detail)
         area = {k: getattr(a, k) for k in ("geojson", "bbox", "place") if getattr(a, k)}
-        env = search_places(a.query, area, investigation_id=inv.id)
+        env = search_places(a.query, area, providers=usable, investigation_id=inv.id)
         if env.status == "declined":
             s.detail = f"skipped: {env.declined_reason}"
             raise _Skip(s.detail)
@@ -801,6 +958,15 @@ def _exec(s: PlanStep, eng, src, inv: Investigation, envs, feats):
             s.detail = f"{len(prim_out)} of {len(prim_in)}" + (f" ({nc} outside the mapped area: unknown)" if nc else "")
             stmt = f"{len(prim_out)} of {len(prim_in)} {kind}." + (f" {nc} lie outside FEMA's mapped area: unknown." if nc else "")
             meas = {"kept": len(prim_out), "of": len(prim_in), **({"unknown": nc} if nc else {})}
+            if "in_flood_zone" in a.where:  # the FEMA maps these results were judged against, by effective date
+                eff: dict[str, int] = {}
+                for f in prim_out:
+                    k = f["properties"].get("flood_map_effective") or "unrecorded"
+                    eff[k] = eff.get(k, 0) + 1
+                if eff:
+                    meas["flood_map_effective"] = dict(sorted(eff.items()))
+                    lims.append("FEMA flood maps (FIRM panels) in effect for these results: "
+                                + ", ".join(f"{d} ({n})" for d, n in sorted(eff.items())))
         _add_ev(inv, s, ev_kind, stmt, source=_src(env, srcname), method=env.method[:300], measurement=meas,
                 feature_ids=[_fid(f) for f in prim_out], strength=strength,
                 confidence_note="a geometric test against the published layer" if ev_kind == "spatial_intersection" else
@@ -820,7 +986,10 @@ def _exec(s: PlanStep, eng, src, inv: Investigation, envs, feats):
                 k = f["properties"].get("elev_bfe_status") or "unknown"
                 st[k] = st.get(k, 0) + 1
             known = sum(1 for f in prim if f["properties"].get("elev_above_bfe_m") is not None)
-            _add_ev(inv, s, "measurement", f"Height above the base flood elevation is known for {known} of {len(prim)}.",
+            # name the set: after a filter this describes what the filter kept, not the set the filter started from
+            kept = any(x.op == "filter" for x in inv.plan.steps if x.id in s.depends_on)
+            setname = f"the {len(prim)} kept by the filter" if kept else f"{len(prim)}"
+            _add_ev(inv, s, "measurement", f"Height above the base flood elevation is known for {known} of {setname}.",
                     source=_src(env, "3DEP"), method="lidar ground (lowest 10 % within 2 m of the outline) minus FEMA's static BFE",
                     measurement={"known": known, "of": len(prim), "unavailable": len(prim) - known,
                                  **{f"status_{k}": v for k, v in st.items()}},
@@ -882,11 +1051,154 @@ def _exec(s: PlanStep, eng, src, inv: Investigation, envs, feats):
                 measurement={"n": len(prim)}, feature_ids=[_fid(f) for f in prim[:conf()["limits"]["top_findings"]]],
                 strength="strong", confidence_note="deterministic; inherits the uncertainty of the facts it sorts on")
         return None, prim + rest
+    if s.op == "simulate":
+        return _op_simulate(s, a, inv)
+    if s.op == "exposure":
+        return _op_exposure(s, a, inv, eng, feats)
+    if s.op == "cluster":
+        return _op_cluster(s, a, inv, feats)
     if s.op == "conclude":
         conclude(inv, feats, envs)
         s.detail = f"{len(inv.findings)} findings"
         return None, None
     raise ValueError(f"no executor for {s.op}")
+
+
+_SIM_SRC = {"name": "Groundtruth scenario engine (SIMULATED) on USGS 3DEP lidar 2016 + FEMA static BFE", "url": "",
+            "date": "lidar acquired 2016; FEMA panels effective 2009-03-02 to 2018-11-16", "licence": "derived from public-domain inputs"}
+
+
+def _sim_extent(inv: Investigation, feats) -> tuple[list[dict[str, Any]], Any]:
+    from groundtruth import exposure as X
+
+    sid = next((x.id for x in inv.plan.steps if x.op == "simulate"), None)
+    ext = feats.get(sid) or []
+    return ext, X.union_extent(ext)
+
+
+def _op_simulate(s: PlanStep, a: SimulateArgs, inv: Investigation):
+    from groundtruth import scenario as S
+
+    try:
+        m = S.meta(a.scenario)
+    except FileNotFoundError:
+        raise _Skip(f"the scenario {a.scenario} has not been built on this machine (scripts/build_scenarios.py); "
+                    "nothing is simulated") from None
+    lv = next((x for x in m["levels"] if abs(float(x["offset_m"]) - a.offset_m) < 1e-6), None)
+    if lv is None:
+        raise ValueError(f"level +{a.offset_m:g} m is not built for {a.scenario}")
+    ext = S.extent(a.scenario, a.offset_m)["features"]
+    d = m["definition"]
+    s.detail = (f"SIMULATED water surface {lv['level_m']:.2f} m {d['reference']['datum']} (FEMA BFE + {a.offset_m:g} m): "
+                f"{lv['land_area_m2'] / 1e6:.2f} km² of land connected to the lake")
+    lims = list(d["assumptions"])
+    if m.get("unmeasured_land_m2"):
+        lims.append(f"{m['unmeasured_land_m2'] / 1e6:.2f} km² of land has no lidar ground return: its outcome is unknown, not dry")
+    cons = next((x.get("fema_consistency") for x in m["levels"] if x.get("fema_consistency")), None)
+    _add_ev(inv, s, "simulation", f"Hypothetical: if Lake Norman stood at {lv['level_m']:.2f} m {d['reference']['datum']} "
+            f"({a.offset_m:g} m above FEMA's base flood elevation of {d['reference']['value_m']} m), "
+            f"{lv['land_area_m2'] / 1e6:.2f} km² of land connected to the lake would lie below that level.",
+            source=_SIM_SRC, method=f"connected bathtub on the lidar ground model at {m['grid_m']} m: cells at or below the "
+            "level that connect to the lake through other such cells; unmeasured cells never wet",
+            measurement={"level_m": lv["level_m"], "offset_m": a.offset_m, "land_area_m2": lv["land_area_m2"],
+                         "unmeasured_land_m2": m.get("unmeasured_land_m2"), "is_synthetic": True,
+                         **({"fema_consistency_at_bfe": cons} if cons else {})},
+            feature_ids=[], strength="moderate", limitations=lims,
+            confidence_note="a simplified exposure scenario, not a hydraulic or rainfall model")
+    if cons:
+        inv.plan.limitations.append(f"Method check: at FEMA's BFE the bathtub covers {cons['share_of_fema_fringe_covered'] * 100:.0f} % "
+                                    f"of FEMA's mapped lake fringe (IoU {cons['iou']:.2f}); a plausibility check, not a validation")
+    return None, ext
+
+
+def _op_exposure(s: PlanStep, a: ExposureArgs, inv: Investigation, eng, feats):
+    from groundtruth import exposure as X
+    from groundtruth import risk as R
+    from groundtruth import scenario as S
+
+    ext, eg = _sim_extent(inv, feats)
+    if eg is None:
+        raise _Skip("no scenario extent to compare with")
+    sim = next(x for x in inv.plan.steps if x.op == "simulate").args
+    bb = eg.bounds
+    if a.target == "buildings":
+        raw = [{"type": "Feature", "geometry": __import__("shapely.geometry", fromlist=["mapping"]).mapping(b["geom"]),
+                "properties": {"id": b["id"], "class": b.get("class"), "kind": "building"}} for b in S._buildings(bb)]
+        hit = X.touching(eg, raw)
+        for f, fact in zip(hit, R.flood_facts(hit) if hit else []):
+            f["properties"].update(fact)
+        in100 = sum(1 for f in hit if f["properties"].get("flood_kind") == "100yr")
+        s.detail = f"{len(hit)} buildings touch the extent; {in100} also in FEMA's 100-year zone"
+        _add_ev(inv, s, "spatial_intersection", f"{len(hit)} buildings (Overture footprints) touch the hypothetical extent at "
+                f"+{sim['offset_m']:g} m; {in100} of them are already inside FEMA's mapped 100-year zone and "
+                f"{len(hit) - in100} are outside it.", source={"name": "Overture Maps buildings 2026-10-21.0 × scenario extent; FEMA NFHL",
+                "url": "", "date": "Overture release 2026-10-21; FEMA effective 2009–2018", "licence": "ODbL / public domain"},
+                method="footprint intersects the simulated extent (EPSG:4326 geometry test); FEMA relation per footprint",
+                measurement={"kept": len(hit), "of": len(raw), "in_fema_100yr": in100, "outside_fema_100yr": len(hit) - in100,
+                             "is_synthetic_outcome": True},
+                feature_ids=[str(f["properties"]["id"]) for f in hit], strength="moderate",
+                limitations=["Touching the extent is potential exposure under the scenario's assumptions, not a prediction that "
+                             "a building floods: floor heights, foundations and drainage are unknown",
+                             "Building footprints are not parcel boundaries"])
+        return None, hit
+    if a.target == "roads":
+        p = config.DATA / "layers" / "osm_major_roads.geojson"
+        raw = json.loads(p.read_text())["features"] if p.exists() else []
+        hit = X.touching(eg, raw, measure_length=True)
+        for f in hit:
+            f["properties"]["kind"] = "road"
+        tot = round(sum(f["properties"]["length_in_extent_m"] for f in hit))
+        s.detail = f"{len(hit)} major-road segments, {tot} m inside the extent"
+        _add_ev(inv, s, "spatial_intersection", f"{len(hit)} major-road segments (OSM) cross the hypothetical extent, "
+                f"{tot:,} m of road in total.", source={"name": "OpenStreetMap major roads × scenario extent", "url": "",
+                "date": "OSM extract 2026-11-06", "licence": "ODbL"}, method="line ∩ extent, length in EPSG:32617",
+                measurement={"kept": len(hit), "length_in_extent_m": tot, "is_synthetic_outcome": True},
+                feature_ids=[str(f["properties"].get("osm_id") or "") for f in hit], strength="moderate",
+                limitations=["Only major roads (OSM) are assessed; local streets are not", "A road crossing the extent is "
+                             "potentially impassable under the assumptions; road and bridge elevations are not modelled"])
+        return None, hit
+    layer = "community_bridges" if a.target == "bridges" else "community_facilities"
+    try:
+        env = eng.provider.get_layer(layer, tuple(bb)) if a.target == "bridges" else eng.provider.get_layer(layer, None)
+        raw = (env or {}).get("features", []) if isinstance(env, dict) else getattr(env, "features", None) or []
+    except Exception:  # noqa: BLE001 (layer not built: unknown, never "none")
+        raw = []
+    if not raw:
+        raise _Skip(f"the {a.target} layer (OpenStreetMap community infrastructure, data/community/v1) is not built on "
+                    f"this machine: {a.target} exposure is unknown, not zero")
+    hit = X.touching(eg, raw, measure_length=True) if a.target == "bridges" else X.near(eg, raw, a.within_m)
+    n_touch = sum(1 for f in hit if f["properties"].get("dist_to_extent_m", 0) == 0)
+    s.detail = f"{len(hit)} {a.target}" + (f" within {a.within_m:g} m ({n_touch} touching)" if a.target == "facilities" else "")
+    _add_ev(inv, s, "spatial_intersection" if a.target == "bridges" else "spatial_proximity",
+            (f"{len(hit)} bridges (OSM) cross the hypothetical extent." if a.target == "bridges" else
+             f"{len(hit)} community facilities (OSM) lie within {a.within_m:g} m of the hypothetical extent; {n_touch} touch it."),
+            source={"name": "OpenStreetMap community infrastructure × scenario extent", "url": "", "date": "OSM extract 2026-11-06",
+                    "licence": "ODbL"}, method="geometry test in EPSG:32617",
+            measurement={"kept": len(hit), "touching": n_touch, "is_synthetic_outcome": True},
+            feature_ids=[str(f["properties"].get("osm_id") or "") for f in hit], strength="moderate",
+            limitations=["Proximity is not impact", "OpenStreetMap completeness for facilities is not verified here"])
+    return None, hit
+
+
+def _op_cluster(s: PlanStep, a: ClusterArgs, inv: Investigation, feats):
+    from groundtruth import exposure as X
+
+    ops = {x.id: x for x in inv.plan.steps}
+    def of(target):
+        sid = next((i for i, x in ops.items() if x.op == "exposure" and x.args.get("target") == target), None)
+        return feats.get(sid) or []
+    bld, roads, fac = of("buildings"), of("roads"), of("facilities")
+    cl = X.clusters(bld, link_m=a.link_m, min_size=a.min_size, roads=roads, facilities=fac)
+    s.detail = f"{len(cl)} clusters of ≥ {a.min_size} exposed buildings" + (f"; largest {cl[0]['properties']['n_buildings']}" if cl else "")
+    in_cl = sum(c["properties"]["n_buildings"] for c in cl)
+    _add_ev(inv, s, "spatial_intersection", f"{len(cl)} clusters hold {in_cl} of the {len(bld)} exposed buildings"
+            + (f"; the largest (C1) has {cl[0]['properties']['n_buildings']}." if cl else "."),
+            source=_SIM_SRC, method=f"single-linkage grouping of footprints within {a.link_m:g} m (EPSG:32617), groups of ≥ "
+            f"{a.min_size}; ranked by building count, then major-road length (an ordering, not a risk score)",
+            measurement={"kept": len(cl), "count": len(cl), "buildings_in_clusters": in_cl, "of": len(bld), "is_synthetic_outcome": True},
+            feature_ids=[c["properties"]["cluster_id"] for c in cl], strength="moderate",
+            limitations=["Clusters inherit the scenario's assumptions"])
+    return None, cl + bld + roads + fac
 
 
 # measured predicates: where key → (feature property, explain fact, words)
@@ -917,16 +1229,24 @@ def _coverage_needs(plan: InvestigationPlan) -> set[str]:
         need.add("homes with pools")
     if facts & {"elevation", "canopy", "slope", "height"} or where & {"elevation_above_flood_m", "canopy_over_pct", "slope_deg", "height_m"}:
         need.add("lidar")
-    if "flood" in facts or "in_flood_zone" in where or "elevation_above_flood_m" in where:
+    if "flood" in facts or "in_flood_zone" in where or "elevation_above_flood_m" in where or "simulate" in ops:
         need.add("flood maps")
+    if "simulate" in ops:
+        need |= {"lidar"}
     return need
 
 
 def _filter_kind(where: dict[str, Any]) -> tuple[str, str, str]:
     if "in_flood_zone" in where:
         k = (where["in_flood_zone"] or {}).get("kind", "any") if isinstance(where["in_flood_zone"], dict) else where["in_flood_zone"]
-        return {"100yr": "touch a FEMA 100-year flood zone", "500yr": "touch a FEMA 100- or 500-year flood zone"}.get(
-            k, "touch a FEMA flood zone"), "spatial_intersection", "FEMA"
+        return {"100yr": "touch a FEMA 100-year flood zone", "500yr": "touch a FEMA 100- or 500-year flood zone",
+                "floodway": "touch a FEMA regulatory floodway"}.get(k, "touch a FEMA flood zone"), "spatial_intersection", "FEMA"
+    if "within_m_of" in where:
+        w = where["within_m_of"] if isinstance(where["within_m_of"], dict) else (where["within_m_of"] or [{}])[0]
+        return f"are within {float(w.get('m', 0)):g} m of {str(w.get('layer', 'the layer')).replace('_', ' ')}", "spatial_proximity", \
+            ("OpenStreetMap" if str(w.get("layer", "")).startswith(("osm_", "community_")) else "")
+    if "slope_deg" in where:
+        return f"sit on slopes steeper than {float(where['slope_deg'].get('min', 0)):g}°", "measurement", "3DEP"
     if "elevation_above_flood_m" in where:
         spec = where["elevation_above_flood_m"]
         w = f"less than {spec['lt']:g} m" if spec.get("lt") is not None else f"more than {spec.get('gt', spec.get('min', 0)):g} m"
@@ -980,7 +1300,7 @@ def conclude(inv: Investigation, feats, envs) -> None:
     findings: list[Finding] = []
     chain: list[Evidence] = []
     for e in ev:
-        if e.kind in ("detection", "association", "spatial_intersection", "measurement", "temporal"):
+        if e.kind in ("detection", "association", "spatial_intersection", "spatial_proximity", "simulation", "measurement", "temporal"):
             chain.append(e)
     # the headline: the last count-bearing evidence, supported by everything before it in the chain
     counted = [e for e in chain if "kept" in e.measurement or "homes" in e.measurement or "count" in e.measurement]
@@ -992,10 +1312,15 @@ def conclude(inv: Investigation, feats, envs) -> None:
         ops = {st.id: st.op for st in inv.plan.steps}
         on_model = any(e.kind == "detection" and ops.get(e.step_id) in _MODEL_OPS for e in sup)
         listed = ops.get(head.step_id) in _LISTING_OPS
-        nature = "model_prediction" if on_model else ("provider_reported" if listed else "computed")
+        simulated = any(e.kind == "simulation" or e.measurement.get("is_synthetic_outcome") for e in sup + [head])
+        nature = "simulated" if simulated else "model_prediction" if on_model else ("provider_reported" if listed else "computed")
         findings.append(Finding(id="f1", statement=head.statement, nature=nature,
                                 strength=weakest.strength, evidence_ids=[e.id for e in sup], feature_ids=head.feature_ids[:2000],
                                 why_strength=_why_strength(weakest)))
+    for e in ev:  # every scenario step is its own finding, labelled SIMULATED
+        if (e.kind == "simulation" or e.measurement.get("is_synthetic_outcome")) and e is not (counted[-1] if counted else None):
+            findings.append(Finding(id=f"f{len(findings) + 1}", statement=e.statement, nature="simulated", strength=e.strength,
+                                    evidence_ids=[e.id], feature_ids=e.feature_ids[:2000], why_strength=_why_strength(e)))
     for e in chain:
         if e.kind == "measurement" and e is not (counted[-1] if counted else None):
             findings.append(Finding(id=f"f{len(findings) + 1}", statement=e.statement, nature="computed", strength=e.strength,
@@ -1007,6 +1332,7 @@ def conclude(inv: Investigation, feats, envs) -> None:
                                     strength=e.strength, evidence_ids=[e.id], feature_ids=e.feature_ids[:2000],
                                     why_strength=_why_strength(e)))
     gaps = [g for e in ev if e.kind == "coverage" for g in e.limitations]
+    gaps += [x.detail for x in inv.plan.steps if x.status == "skipped" and x.op in ("simulate", "exposure") and x.detail]
     unav = [e for e in ev if e.measurement.get("known") is not None and e.measurement.get("known", 0) < e.measurement.get("of", 0)]
     for e in unav:
         miss = e.measurement.get("unavailable", e.measurement["of"] - e.measurement["known"])
@@ -1033,19 +1359,76 @@ def conclude(inv: Investigation, feats, envs) -> None:
             inv.contradictions.append(f"{newboth} marked new also look present in 2020")
     lid = [e for e in ev if e.source.get("name", "").startswith("USGS 3DEP")]
     if lid:
-        inv.contradictions.append("Different dates: lidar heights are from 2016–2019, imagery from 2022, flood maps from FEMA's "
-                                  "effective date; a change after the lidar flight is not reflected")
+        inv.contradictions.append("Different dates: lidar heights are from 2016–2019, imagery from 2022, flood maps "
+                                  f"{_fema_effective()}; a change after the lidar flight is not reflected")
     inv.summary = _summary(inv)
 
 
+def _fema_effective() -> str:
+    """FEMA FIRM effective dates from the source registry (fema_nfhl.effective_date), never a fetch or file date."""
+    import re as _re
+    try:
+        from pathlib import Path as _P
+        rows = json.loads((_P(__file__).parent / "conf" / "sources.json").read_text())["sources"]
+        eff = next(r for r in rows if r["source_id"] == "fema_nfhl").get("effective_date") or ""
+    except (OSError, ValueError, KeyError, StopIteration):
+        eff = ""
+    m = _re.search(r"effective (\d{4}-\d{2}-\d{2}) to (\d{4}-\d{2}-\d{2})", eff)
+    return f"effective {m.group(1)} to {m.group(2)} (FEMA FIRM panels)" if m else "with an unrecorded FEMA effective date"
+
+
+def _predicted(inv: Investigation, depth: int = 0) -> bool:
+    """Are the objects AI-detected? True if this plan ran a detector, or it narrows a previous one that did."""
+    if inv.plan and any(x.op in _MODEL_OPS for x in inv.plan.steps):
+        return True
+    prev = get(inv.context.get("previous")) if inv.context.get("previous") and depth < 5 else None
+    return bool(prev and _predicted(prev, depth + 1))
+
+
 def _summary(inv: Investigation) -> str:
+    """The headline, built only from evidence: what was investigated (scope + target), whether the objects are
+    AI-detected candidates or verified, the count with its denominator, unknowns kept apart, the ranking rule, and the
+    main limits. Never implies human verification unless human evidence exists."""
     f = inv.findings
     if not f:
         return "I couldn't establish anything here; see the steps for what was missing."
-    head = f[0].statement
+    plan = inv.plan
+    scope = (plan.scope or {}).get("label") if plan else None
+    target = plan.targets[0] if plan and plan.targets else "results"
+    head = f[0]
+    humans = [e for e in inv.evidence if e.kind == "human"]
+    parts = []
+    if plan and plan.unapplied:
+        parts.append("Not applied: " + "; ".join(f"“{u}”" for u in plan.unapplied) + " (no data or tool for it yet), "
+                     "so the results below ignore " + ("it." if len(plan.unapplied) == 1 else "them."))
+    predicted = _predicted(inv)
+    if predicted:
+        verified = f"{len(humans)} reviewed by a person" if humans else "none human-verified"
+        parts.append(f"Investigated {target}{f' around {scope}' if scope else ''}: AI-detected candidates ({verified}).")
+    elif scope:
+        parts.append(f"Investigated {target} in {scope}.")
+    parts.append(head.statement)
+    meas = [e for e in inv.evidence if e.measurement.get("unknown") or e.measurement.get("unavailable")]
+    for e in meas[:1]:
+        unk = e.measurement.get("unknown") or e.measurement.get("unavailable")
+        total = e.measurement.get("total") or e.measurement.get("of")
+        if f"{unk} of {total}" not in head.statement:  # the headline finding may already say it
+            parts.append(e.statement.rstrip(".") + "; the rest are counted as unknown, not as passing or failing.")
+    if any(s.op == "rank" for s in (plan.steps if plan else [])):
+        rule = conf()["rank_rule"]["keys"]
+        parts.append("Ordered by " + ", then ".join(k["label"] for k in rule) + "; this is an ordering, not a risk score.")
+    lims = []
+    if head.strength == "weak":
+        lims.append("the detector's precision isn't measured for this data version")
+    if inv.contradictions:
+        lims.append("sources differ in date (lidar 2016–19, imagery 2022)" if any("lidar" in c for c in inv.contradictions)
+                    else inv.contradictions[0])
     gaps = [x for x in f if x.nature == "gap"]
-    return head + ((" 1 gap in the data is listed below." if len(gaps) == 1 else f" {len(gaps)} gaps in the data are listed below.")
-                   if gaps else "")
+    if gaps:
+        lims.append("1 data gap is listed below" if len(gaps) == 1 else f"{len(gaps)} data gaps are listed below")
+    if lims:
+        parts.append("Limits: " + "; ".join(lims) + ".")
+    return " ".join(parts)
 
 
 def _why_strength(e: Evidence) -> str:

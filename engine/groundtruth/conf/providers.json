@@ -66,7 +66,9 @@
         "autocomplete": 7.63
       },
       "_price_basis": "ESTIMATE: Yelp sells monthly plans (Base listed at $229/month for 30,000 calls => ~$7.63/1k). Exact per-call price was not visible in the docs; see https://business.yelp.com/data/products/places-api/ and https://docs.developer.yelp.com/docs/places-faq. Trial calls (5,000/30 days) are 'strictly for evaluation and not for commercial deployment'.",
-      "_cache_basis": "Yelp API Terms §5(a) and Places FAQ: content may be cached at most 24 hours; business IDs may be stored for back-end matching. cache_ttl_s 3600 is in-memory only."
+      "_cache_basis": "Yelp API Terms §5(a) and Places FAQ: content may be cached at most 24 hours; business IDs may be stored for back-end matching. cache_ttl_s 3600 is in-memory only.",
+      "display_enabled": false,
+      "display_blocker": "Yelp display requirements are not met and need owner/legal action: the official Yelp logo and star sprite assets (terms.yelp.com/developers/display_requirements) are not installed, and §5(g) (Yelp geocodes on OpenStreetMap / open-source maps) needs a legal reading for our MapLibre map. Until then Yelp content is not shown to users (API_TERMS_REVIEW.md)."
     },
     "google": {
       "enabled": false,

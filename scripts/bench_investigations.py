@@ -13,6 +13,8 @@ import time
 import urllib.request
 from pathlib import Path
 
+import _gt_auth  # noqa: E402
+
 CASES = [
     # (objective, context, expected status, expected ops prefix or None, note)
     ("Find residential properties near Lake Norman with swimming pools that intersect mapped 100-year flood zones. "
@@ -40,7 +42,7 @@ CASES = [
 
 def call(base, method, path, body=None):
     req = urllib.request.Request(base + path, method=method, data=None if body is None else json.dumps(body).encode(),
-                                 headers={"Content-Type": "application/json", "X-GT-Owner": "bench-0000000001"})
+                                 headers=_gt_auth.headers({"Content-Type": "application/json", "X-GT-Owner": "bench-0000000001"}))
     return json.load(urllib.request.urlopen(req, timeout=120))
 
 

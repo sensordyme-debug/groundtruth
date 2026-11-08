@@ -18,14 +18,21 @@
                      "_doc": "SAM outlines of pools often include the deck/yard, so with outline_by_colour the final outline = SAM mask ∩ pool-cyan pixels (dilated 1 px), the connected piece at the prompt. Area range, compactness and colour fraction are checked on that refined outline."}
   },
   "solar_installation": {
-    "rerank": {"patch_weight": 0.8, "colour_weight": 0.2, "colour": {"hsv_lo": [190, 30, 20], "hsv_hi": [250, 255, 110]}, "pool": 400},
+    "_doc": "Solar verifier (2026-11-08, docs/COMPUTER_VISION_EVALUATION.md#solar). The old colour (H190-250, S>=30, V<=110) matched 0% of the pixels of known NAIP blue panel arrays but 7% of all pixels: it was a SHADOW detector (34,178 'objects' in Huntersville, 0/48 solar by eye, 99% never checked because only SAM-outlined objects were checked). NAIP 2022 panels are mid-bright blue (colour below: 55% of known array pixels, 0.23% of all pixels). Every detection is now verified before it is counted (verify_pending), and again on its SAM outline (object_check).",
+    "rerank": {"patch_weight": 0.8, "colour_weight": 0.2, "colour": {"hsv_lo": [195, 30, 130], "hsv_hi": [225, 90, 210]}, "pool": 400},
     "count_conf": 0.5,
     "pick_colour_stat": "mean",
-    "experimental": "eye precision ~0/12 on warehouses (roof-edge shadows); a pretrained solar verifier is pending (Phase 3)",
+    "experimental": "solar verifier is rule-based (panel colour, on a roof or a large array, lidar height where built); engineer eye-check only, no human reviews yet; bright grey ground-mount panels are not detected",
     "detect": {"prefilter_sim": 0.4, "score_min": 0.5, "colour_min": 0.2, "sim_min": 0.4, "nms_m": 30, "neg_margin": 0.0},
+    "verify_pending": {"max_green_frac": 0.3, "require_outline": true,
+                       "any_of": [{"min_building_overlap": 0.3, "min_height_m": 2.5, "_doc": "rooftop array: on an Overture footprint, raised (lidar, where built)"},
+                                  {"area_m2": [1000, 1000000], "_doc": "large ground-mount / carport array: >= 1000 m2 of connected panel-colour patches"}],
+                       "_doc": "Checked on the detection's 8.4 m patch box before any SAM outline exists (area = the scan's connected patch group). Observed false positives: canopy shadows (vegetation), lawn/road shadows and asphalt (not on a building), blue courts (small, off-roof). require_outline: a box that passes is queued for SAM but only counted once its outline passes object_check (blue-grey roofs pass every box rule)."},
     "object_check": {"area_m2": [15, 200000], "compactness_min": 0.3, "colour_frac_min": 0.5, "colour_area_min_m2": 25,
-                     "outline_by_colour": true,
-                     "_doc": "Dark roof-edge shadows share the panel colour; they are thin strips, so compactness + a minimum panel-colour area reject them."}
+                     "outline_by_colour": true, "max_green_frac": 0.3, "rectangularity_min": 0.8, "max_host_cover": 0.6, "min_host_contrast": 50,
+                     "any_of": [{"min_building_overlap": 0.3, "min_height_m": 2.5},
+                                {"area_m2": [1000, 1000000]}],
+                     "_doc": "On the SAM outline refined to panel-colour pixels: area, compactness, panel-colour fraction/area, not vegetation, rectangular (arrays are rectangles: 0.85-0.88 on known arrays; whole house roofs 0.6-0.8), covering at most 60% of its building footprint (a blue-grey roof is the whole footprint; known arrays cover ~30%), different from the rest of its roof (median saturation/brightness distance >= 50: known arrays 77-82, blue-grey roof planes and dark membrane roofs 2-45; not measurable on a roof = fail), and on a roof (lidar-raised where built) or a large array. Tuned on Huntersville false positives + the South End arrays; Matthews and Uptown are the holdout."}
   },
   "parking_lot": {"rerank": {"patch_weight": 1.0, "colour_weight": 0.0, "colour": null, "pool": 400}, "count_conf": 0.5,
                   "experimental": "under-counts large lots (Uptown 6 counted vs 407 in OSM); a lot detector / area inventory is pending (Phase 3/7)",

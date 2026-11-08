@@ -19,9 +19,13 @@
     "county_edge_buffer_m": 15
   },
   "canopy": {
-    "_doc": "canopy = lidar height above ground (3DEP 2016 nDSM) >= min_height_m AND the NAIP 2022 pixel passes the colour rule (green chromaticity, no NDVI). Precomputed per lidar place at 1 m.",
+    "_doc": "canopy (scripts/build_canopy.py → data/canopy/<data_versions.canopy>/<Place>/canopy.tif, 1 m, per lidar place) = measured lidar height above ground (3DEP 2016 nDSM) >= min_height_m AND not inside an Overture building footprint grown by building_buffer_m AND NAIP naip_year NDVI (band 4 NIR vs band 1 red) >= ndvi.min within ±ndvi.tolerance_px (misregistration / tree lean). Cells farther than coverage_radius_m from any real lidar return are nodata (255), never 0. A canopy cover estimate, not individual-tree detection.",
     "min_height_m": 3.0,
-    "colour_rule": {"g_chroma_min": 0.355, "green_over_red": true, "green_over_blue_min": 0},
+    "building_buffer_m": 1.0,
+    "ndvi": {"min": 0.2, "tolerance_px": 1},
+    "coverage_radius_m": 5,
+    "overview_m": 4,
+    "colour_rule": {"g_chroma_min": 0.355, "green_over_red": true, "green_over_blue_min": 0, "_note": "legacy: only scripts/build_risk_layers.py rasters (never run) reads this; build_canopy.py uses ndvi"},
     "naip_year": 2022,
     "buffer_m": {"swimming_pool": 2.0, "pool": 2.0, "default": 0.0},
     "buffer_note": "for pools the footprint is grown by 2 m: an outline is the VISIBLE water, so branches over the pool sit on its edge"

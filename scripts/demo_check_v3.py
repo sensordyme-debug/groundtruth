@@ -20,6 +20,8 @@ from pathlib import Path
 
 from playwright.sync_api import Page, sync_playwright
 
+import _gt_auth  # noqa: E402  (scripts/_gt_auth.py: API token for local checks)
+
 ROOT = Path(__file__).resolve().parents[1]
 BANNED = ["MOCK", "rules planner", "envelope", "chips", "cells", "sense", "Indexed now", "raw score", "undefined", "NaN", "[object Object]"]
 checks: list[dict] = []
@@ -39,7 +41,7 @@ def banned(page: Page) -> list[str]:
 def wait_inv_done(page: Page, n_before: int, timeout_s: float = 120) -> dict:
     page.wait_for_function(f"() => document.querySelectorAll('[data-testid=investigation]').length > {n_before}", timeout=timeout_s * 1000)
     page.wait_for_function("() => { const b = [...document.querySelectorAll('[data-testid=investigation]')].pop();"
-                           " return b && !['running','planning'].includes(b.dataset.status) && window.__gtLast && window.__gtLast.kind === 'investigation'; }",
+                           " return b && b.dataset.status && !['running','planning'].includes(b.dataset.status) && window.__gtLast && window.__gtLast.kind === 'investigation'; }",
                            timeout=timeout_s * 1000)
     return page.evaluate("() => window.__gtLast")
 
@@ -66,6 +68,7 @@ def main() -> int:
         br = p.chromium.launch()
         ctx = br.new_context(viewport={"width": w, "height": h}, accept_downloads=True)
         page = ctx.new_page()
+        _gt_auth.login_browser(page, a.base)
         errors: list[str] = []
         page.on("pageerror", lambda e: errors.append(str(e)))
         page.on("console", lambda m: errors.append(m.text) if m.type == "error" and "favicon" not in m.text else None)
@@ -85,7 +88,8 @@ def main() -> int:
         last = wait_inv_done(page, 0)
         timings["flagship_total_ms"], timings["flagship_first_ms"] = last.get("ms"), last.get("first_ms")
         page.wait_for_timeout(1900)
-        inv = json.load(urllib.request.urlopen(f"{a.base}/api/v1/investigations/{last['id']}", timeout=10))
+        inv = json.load(urllib.request.urlopen(urllib.request.Request(f"{a.base}/api/v1/investigations/{last['id']}",
+                                                                    headers=_gt_auth.headers()), timeout=10))
         statuses = [s["status"] for s in inv["plan"]["steps"]]
         ok("flagship: every plan step done", statuses and all(s == "done" for s in statuses), ",".join(statuses))
         ok(f"flagship: finished in ≤ {a.budget_ms:.0f} ms", (last.get("ms") or 1e9) <= a.budget_ms, f"{last.get('ms')} ms, first result {last.get('first_ms')} ms")
@@ -123,6 +127,7 @@ def main() -> int:
         # ---- follow-up
         t0 = time.perf_counter()
         before = page.locator("[data-testid=investigation]").count()
+        page.evaluate("() => { window.__gtLast = null; }")  # never mistake the previous investigation for this one
         page.locator("#gt-ask-2").fill("which of those are less than 1 m above the flood elevation")
         page.locator("#gt-ask-2").press("Enter")
         last = wait_inv_done(page, before)

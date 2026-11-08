@@ -41,6 +41,35 @@ GDAL_ENV: dict[str, Any] = {
 NAIP_LICENCE = "Public domain (USDA FSA NAIP); hosted by Microsoft Planetary Computer (PC Terms of Use)"
 
 
+def registry_date(source_id: str) -> str:
+    """The dataset's own date from the source registry (conf/sources.json), with its kind spelled out:
+    "2026-11-06 (data timestamp)" for OSM, "2026-10-21 (release 2026-10-21.0)" for Overture. Never a file
+    modification time (that is when the file was copied, not when the data was captured). "unavailable" when the
+    registry has no date: unknown stays unknown."""
+    import re
+
+    p = Path(__file__).resolve().parents[1] / "conf" / "sources.json"
+    try:
+        d = json.loads(p.read_text())
+    except (OSError, ValueError):
+        return "unavailable"
+    rows = d.get("sources", []) if isinstance(d, dict) else d
+    r = next((x for x in rows if x.get("source_id") == source_id), None)
+    if not r:
+        return "unavailable"
+    acq, pub = str(r.get("acquisition_date") or ""), str(r.get("publication_date") or "")
+    rel = re.search(r"release (\d{4}-\d{2}-\d{2}(?:\.\d+)?)", acq)
+    if rel:
+        return f"{rel.group(1)[:10]} (release {rel.group(1)})"
+    m = re.match(r"(\d{4}-\d{2}-\d{2})", acq)
+    if m:
+        return f"{m.group(1)} (data timestamp)"
+    m = re.match(r"(\d{4}-\d{2}-\d{2})", pub)
+    if m:
+        return f"{m.group(1)} (publication)"
+    return "unavailable"
+
+
 class PublicDataProvider(DataProvider):
     name = "public"
 
@@ -279,10 +308,14 @@ class PublicDataProvider(DataProvider):
 
         try:
             img, _ = mosaic_reader(paths, tiler, x, y, z, pixel_selection=FirstMethod(), threads=0)
-        except Exception as e:
+        except Exception as e:  # nothing in the blocks here: let the raw scenes answer
             if isinstance(e, TileOutsideBounds) or type(e).__name__ == "EmptyMosaicError":
-                return b""
+                return None
             raise
+        # any hole (block at the data boundary, a masked strip) -> raw fallback: the mosaic never shows nodata where
+        # the raw scenes may have imagery
+        if img.mask is not None and bool((np.asarray(img.mask) == 0).any()):
+            return None
         return img.render(img_format="PNG")
 
     def render_tile_raw(self, year: int, z: int, x: int, y: int, size: int = 256) -> bytes | None:
@@ -322,11 +355,29 @@ class PublicDataProvider(DataProvider):
 
     # ---------- vector layers ----------
     OVERTURE = {"overture_buildings": "buildings", "overture_places": "places"}
+    # Community infrastructure (scripts/build_community.py → data/community/<conf/data_versions.json version>/):
+    # layer name → (file stem, facility kinds to keep or None for all). Only used when no data/layers file has the name.
+    COMMUNITY = {
+        "community_facilities": ("facilities", None),
+        "community_hospitals": ("facilities", ("hospital",)),
+        "community_fire_stations": ("facilities", ("fire_station",)),
+        "community_ems": ("facilities", ("ambulance_station",)),
+        "community_police": ("facilities", ("police",)),
+        "community_schools": ("facilities", ("school",)),
+        "community_shelters": ("facilities", ("shelter",)),
+        "community_bridges": ("bridges", None),
+        "community_waterways": ("waterways", None),
+    }
+
+    def _community_dir(self) -> Path:
+        return self.data / "community" / config.data_version("community")
 
     def layer_names(self) -> list[str]:
         d = self.data / "layers"
         names = sorted(p.stem for p in d.glob("*.geojson")) if d.exists() else []
-        return names + [k for k in self.OVERTURE if (d / f"{k}.parquet").exists()]
+        cd = self._community_dir()
+        return (names + [k for k in self.OVERTURE if (d / f"{k}.parquet").exists()]
+                + [k for k, (stem, _) in self.COMMUNITY.items() if k not in names and (cd / f"{stem}.geojson").exists()])
 
     def _parsed(self, p: Path):
         """Parsed GeoJSON + shapely geometries + STRtree, cached per file (reloaded if the file changes)."""
@@ -351,13 +402,21 @@ class PublicDataProvider(DataProvider):
             return fc
         web = self.data / "layers" / "web" / f"{name}.geojson"
         p = web if detail == "web" and web.exists() else self.data / "layers" / f"{name}.geojson"
+        kinds = None
+        if not p.exists() and name in self.COMMUNITY:
+            stem, kinds = self.COMMUNITY[name]
+            p = self._community_dir() / f"{stem}.geojson"
         if not p.exists():
             raise KeyError(f"unknown layer {name!r}; available: {self.layer_names()}")
         fc, feats, geoms, tree = self._parsed(p)
-        if bbox is None:
+        if bbox is None and kinds is None:
             return fc
-        idx = sorted(int(i) for i in tree.query(box(*bbox), predicate="intersects")) if tree is not None else []
-        return {"type": "FeatureCollection", "features": [feats[i] for i in idx]}
+        if bbox is None:
+            idx = range(len(feats))
+        else:
+            idx = sorted(int(i) for i in tree.query(box(*bbox), predicate="intersects")) if tree is not None else []
+        return {"type": "FeatureCollection", "features": [
+            feats[i] for i in idx if kinds is None or (feats[i].get("properties") or {}).get("kind") in kinds]}
 
     # ---------- routing (Valhalla, built by scripts/build_routing.py from the NC OSM extract) ----------
     @cached_property
@@ -384,14 +443,15 @@ class PublicDataProvider(DataProvider):
         return cache[key]
 
     def routing_source(self) -> Source:
+        # the OSM DATA timestamp from the source registry (never the file's modification time, which is the copy date)
         return Source(name="OpenStreetMap roads (Geofabrik North Carolina extract), routed with Valhalla",
                       url="https://download.geofabrik.de/north-america/us/north-carolina.html",
-                      date=time.strftime("%Y-%m-%d", time.localtime((self.data / "osm" / "north-carolina.osm.pbf").stat().st_mtime))
-                      if (self.data / "osm" / "north-carolina.osm.pbf").exists() else "",
+                      date=registry_date("osm_geofabrik_nc"),
                       licence="ODbL 1.0 (© OpenStreetMap contributors); Valhalla MIT")
 
     def overture_source(self, theme: str) -> Source:
-        return Source(name=f"Overture Maps {theme}", url="https://docs.overturemaps.org/attribution/", date="",
+        return Source(name=f"Overture Maps {theme}", url="https://docs.overturemaps.org/attribution/",
+                      date=registry_date("overture_places" if theme == "places" else "overture_buildings"),
                       licence=("CDLA-Permissive-2.0 / CC0 / Apache-2.0 per record" if theme == "places"
                                else "ODbL 1.0 (© OpenStreetMap contributors, Overture Maps Foundation)"))
 
@@ -410,6 +470,13 @@ class PublicDataProvider(DataProvider):
         meta = self.data / "layers" / "_sources.json"
         if meta.exists():
             out += [Source(**s) for s in json.loads(meta.read_text())]
+        cmeta = self._community_dir() / "meta.json"
+        if cmeta.exists():
+            src = json.loads(cmeta.read_text())["source"]
+            out.append(Source(name=f"OpenStreetMap community infrastructure (community {self._community_dir().name})",
+                              url="https://www.openstreetmap.org/copyright", date=src.get("osm_timestamp", ""),
+                              licence=f"{src.get('licence', 'ODbL 1.0')} "
+                                      f"({src.get('attribution', '© OpenStreetMap contributors')})"))
         return out
 
     def naip_source(self, year: int) -> Source:

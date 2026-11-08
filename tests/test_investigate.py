@@ -1,4 +1,5 @@
 """Investigations: plan compilation + validation, dependency-aware execution, evidence, findings, report, policy."""
+import json
 import pytest
 from pydantic import ValidationError
 
@@ -224,3 +225,90 @@ def test_shore_distance_is_a_condition_not_an_area():
     assert plan is not None, info
     assert plan.scope.get("place") == "Lake Norman"
     assert any(s.op == "filter" and "within_m_of_shore" in s.args["where"] for s in plan.steps)
+
+
+def test_yelp_never_shown_while_display_gated(tmp_path, monkeypatch):
+    """Yelp is enabled (key present) but its display requirements aren't met: it must not reach the investigation."""
+    import groundtruth.places as GP
+
+    class Prov:
+        def __init__(self, name, display):
+            self.pconf = {"display_enabled": display, "display_blocker": "logo + §5(g) pending"}
+            self.name = name
+
+        def status(self):
+            return {"enabled": True}
+
+    asked = {}
+
+    def fake_search(query, area, providers=None, investigation_id=None, **kw):
+        asked["providers"] = providers
+        return Envelope(tool="search_places", version="x", status="ok", result=Result(
+            geojson={"type": "FeatureCollection", "features": []}, metrics={}))
+    monkeypatch.setattr(GP, "build_providers", lambda: {"foursquare": Prov("foursquare", True), "yelp": Prov("yelp", False)})
+    monkeypatch.setattr(GP, "search_places", fake_search)
+    monkeypatch.setattr(I, "store_dir", lambda: tmp_path)
+    plan = I.InvestigationPlan(objective="restaurants", scope={"place": "Myers Park"}, steps=[
+        I.PlanStep(id="s1", op="search_providers", args={"query": "restaurant", "place": "Myers Park"})])
+    inv = I.new("restaurants", {})
+    inv.plan = plan
+    I.run(inv, FakeEngine())
+    assert asked["providers"] == ["foursquare"]
+    assert any("Yelp listings are not shown" in x for x in inv.plan.limitations)
+
+
+def test_headline_quality_and_consistency(tmp_path, monkeypatch):
+    """The headline states scope, candidate status (no implied human verification), the count with its denominator,
+    the ranking rule and the limits; every number in it is in the evidence."""
+    import re as _re
+    inv = _flagship(tmp_path, monkeypatch, FakeEngine())
+    s = inv.summary
+    assert "Lake Norman" in s and "AI-detected candidates" in s and "none human-verified" in s
+    assert "3 of 5" in s
+    assert "Ordered by" in s and "not a risk score" in s
+    assert "Limits:" in s
+    assert "verified by" not in s.replace("human-verified", "")  # never claims verification
+    blob = " ".join(e.statement + " " + json.dumps(e.measurement) for e in inv.evidence)
+    for n in _re.findall(r"\b\d+\b", s):
+        if n in ("100", "2016", "19", "2022"):  # part of named things: "100-year", lidar/imagery years
+            continue
+        assert n in blob, f"{n} in the headline is not in the evidence"
+
+
+def test_headline_mentions_human_reviews_when_present(tmp_path, monkeypatch):
+    inv = _flagship(tmp_path, monkeypatch, FakeEngine())
+    inv.evidence.append(I.Evidence(id="e99", step_id="human", kind="human", statement="A reviewer confirmed result h0.",
+                                   feature_ids=["h0"], strength="strong"))
+    assert "1 reviewed by a person" in I._summary(inv)
+
+
+def test_cooperative_cancellation_stops_between_steps(tmp_path, monkeypatch):
+    """Cancel is cooperative: the running step finishes, every later step is skipped, the status is 'cancelled'."""
+    monkeypatch.setattr(I, "store_dir", lambda: tmp_path)
+    inv = I.new("x", {})
+    inv.plan = I.InvestigationPlan(objective="x", steps=[
+        I.PlanStep(id="s1", op="resolve_area", args={"place": "Myers Park"}),
+        I.PlanStep(id="s2", op="resolve_area", args={"place": "Myers Park"}, depends_on=["s1"]),
+        I.PlanStep(id="s3", op="resolve_area", args={"place": "Myers Park"}, depends_on=["s2"])])
+    real = I._exec
+    ran = []
+
+    def exec_and_cancel(s, *a, **k):
+        ran.append(s.id)
+        if s.id == "s1":
+            I.cancel(inv.id)  # the user presses Stop while s1 runs
+        return real(s, *a, **k)
+    monkeypatch.setattr(I, "_exec", exec_and_cancel)
+    I.run(inv, FakeEngine())
+    assert ran == ["s1"]
+    assert [s.status for s in inv.plan.steps][1:] == ["skipped", "skipped"]
+    assert inv.status == "cancelled" and inv.id not in I._CANCEL
+
+
+def test_headline_never_repeats_the_unknowns(tmp_path, monkeypatch):
+    inv = _flagship(tmp_path, monkeypatch, FakeEngine())
+    inv.findings[0].statement = "12 of the 13 sit low; 7 of 20 stay unknown."
+    inv.evidence.append(I.Evidence(id="e98", step_id="s9", kind="measurement", statement="x",
+                                   measurement={"unknown": 7, "of": 20}, strength="moderate"))
+    s = I._summary(inv)
+    assert s.count("7 of 20") == 1, s

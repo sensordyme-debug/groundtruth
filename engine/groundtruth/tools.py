@@ -654,30 +654,56 @@ class Engine:
         return f
 
     def object_check(self, outline: dict[str, Any], concept: str | None) -> dict[str, Any]:
-        """Post-SAM object check (thresholds in conf/concepts.json "object_check"): area range, compactness and the
-        fraction of the outline's pixels in the concept colour. → {pass, reason, area_m2, compactness, colour_frac}."""
+        """Post-SAM object check (thresholds in conf/concepts.json "object_check"): area range, compactness, the
+        fraction of the outline's pixels in the concept colour, plus optional generic rules: max/min_height_m (lidar,
+        only where lidar is built), max/min_building_overlap (Overture footprints), max_green_frac (vegetation pixels)
+        and any_of (a list of alternative rule sets; at least one must pass, e.g. "on a roof OR a large ground array").
+        A PENDING box (no SAM outline yet; properties.pending_box) is checked with the concept's "verify_pending" rules
+        instead (location/colour rules on the detection's patch box; area = the scan's patch-group area, no
+        compactness, no outline refinement); without "verify_pending" a pending box is not checked (None).
+        → {pass, reason, area_m2, compactness, colour_frac, …}."""
         from groundtruth.rerank import _hsv, concept_conf
 
         cc = concept_conf(concept)
-        oc = cc.get("object_check", {})
-        rule = cc["rerank"].get("colour")
         p = outline.get("properties", {})
+        pending = bool(p.get("pending_box"))
+        oc = cc.get("verify_pending") if pending else cc.get("object_check", {})
+        if oc is None:
+            return None  # type: ignore[return-value]
+        oc = {k: v for k, v in oc.items() if not k.startswith("_")}
+        rule = cc["rerank"].get("colour")
         cache = self.__dict__.setdefault("_check_cache", {})
-        key = (outline.get("id"), concept)
+        key = (outline.get("id"), concept, pending)
         if key in cache:
             return cache[key]
         if not outline.get("geometry"):
             res = {"pass": False, "reason": "no outline"}
             cache[key] = res
             return res
+        alts = [{k: v for k, v in a.items() if not k.startswith("_")} for a in oc.get("any_of", [])]
+        wants = lambda *names: any(n in r for r in [oc, *alts] for n in names)  # noqa: E731
         area = float(p.get("area_m2", 0))
         comp = p.get("compactness")
         if comp is None:
             gm = to_measure(shape(outline["geometry"]))
             comp = 4 * np.pi * gm.area / max(gm.length ** 2, 1e-9)
-        colour_frac = colour_area = None
+        colour_frac = colour_area = green_frac = None
         refined_geom = None
-        if rule and oc.get("colour_frac_min", 0) > 0:
+        if wants("max_green_frac"):
+            from PIL import Image
+            from rasterio.features import rasterize
+            from rasterio.transform import from_origin
+
+            i = self.index.pos.get(p.get("chip_id"))
+            if i is not None:
+                img = np.asarray(Image.open(io.BytesIO(self.index.thumb_jpeg(i))).convert("RGB")).astype(np.int16)
+                x0, y0 = float(self.index.meta["x0_m"][i]), float(self.index.meta["y0_m"][i])
+                tr = from_origin(x0, y0 + config.CHIP_M, config.GSD_M, config.GSD_M)
+                gmask = rasterize([to_measure(shape(outline["geometry"]))], out_shape=img.shape[:2], transform=tr) > 0
+                if gmask.any():  # vegetation = green dominates red and blue (canopy, lawn): panels and roofs are not
+                    R, G, B = img[..., 0][gmask], img[..., 1][gmask], img[..., 2][gmask]
+                    green_frac = float(((G > R + 4) & (G > B + 4)).mean())
+        if rule and any(r.get("colour_frac_min", 0) > 0 for r in [oc, *alts]):
             from PIL import Image
             from rasterio.features import rasterize, shapes
             from rasterio.transform import from_origin
@@ -692,7 +718,7 @@ class Engine:
                 if mask.any():
                     lo, hi = np.array(rule["hsv_lo"], np.float32), np.array(rule["hsv_hi"], np.float32)
                     cmask = np.all((_hsv(img) >= lo) & (_hsv(img) <= hi), -1)
-                    if oc.get("outline_by_colour"):
+                    if oc.get("outline_by_colour") and not pending:
                         # refined outline = SAM mask ∩ dilated colour pixels; keep the piece at the prompt (or the largest)
                         dil = cmask.copy()
                         for dy, dx in ((1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1)):
@@ -720,43 +746,99 @@ class Engine:
                         inside = cmask[mask]
                     colour_frac = float(inside.mean())
                     colour_area = float(inside.sum()) * config.GSD_M ** 2
-        lo_a, hi_a = oc.get("area_m2", [0, 1e12])
-        reasons = []
-        if not (lo_a <= area <= hi_a):
-            reasons.append(f"area {area:.0f} m² outside {lo_a}–{hi_a}")
-        if comp < oc.get("compactness_min", 0):
-            reasons.append(f"compactness {comp:.2f} < {oc['compactness_min']}")
-        if colour_frac is not None and colour_frac < oc.get("colour_frac_min", 0):
-            reasons.append(f"colour {colour_frac:.2f} < {oc['colour_frac_min']}")
-        if colour_area is not None and colour_area < oc.get("colour_area_min_m2", 0):
-            reasons.append(f"colour area {colour_area:.0f} m² < {oc['colour_area_min_m2']}")
         height = None
-        if oc.get("max_height_m") is not None and os.environ.get("GROUNDTRUTH_HEIGHT_CHECK", "1") == "1":
+        if wants("max_height_m", "min_height_m") and os.environ.get("GROUNDTRUTH_HEIGHT_CHECK", "1") == "1":
             from groundtruth import lidar
 
             gw = shape(refined_geom or outline["geometry"])
             lp = lidar.place_for(gw.bounds)
-            if lp:  # pools sit at ground level; a blue roof or a shadowed roof edge has height
+            if lp:  # only where lidar is built; elsewhere the height rules are not applied
                 v = lidar.values(to_measure(gw), lp)
                 if len(v):
                     height = float(np.median(v))
-                    if height > float(oc["max_height_m"]):
-                        reasons.append(f"height {height:.1f} m > {oc['max_height_m']} (lidar)")
         bover = None
-        if oc.get("max_building_overlap") is not None:  # on a building footprint → a roof (works without lidar)
-            gm_ = to_measure(shape(refined_geom or outline["geometry"]))
-            bover = self._building_overlap(gm_)
-            if bover > float(oc["max_building_overlap"]):
-                reasons.append(f"{100 * bover:.0f}% on a building footprint (Overture)")
+        if wants("max_building_overlap", "min_building_overlap"):  # Overture footprints (works without lidar)
+            bover = self._building_overlap(to_measure(shape(refined_geom or outline["geometry"])))
+        rect = host_cover = host_contrast = None
+        if not pending and wants("rectangularity_min"):  # outline area / its minimum rotated rectangle
+            gr = to_measure(shape(refined_geom or outline["geometry"]))
+            rect = float(gr.area / max(gr.minimum_rotated_rectangle.area, 1e-9))
+        if not pending and wants("max_host_cover", "min_host_contrast"):  # vs the building footprint(s) it sits on
+            gh = to_measure(shape(refined_geom or outline["geometry"]))
+            host = self._host_geom(gh)
+            if host is not None:
+                host_cover = float(gh.area / max(host.area, 1e-9))
+                i_ = self.index.pos.get(p.get("chip_id"))
+                if wants("min_host_contrast") and i_ is not None:
+                    # on a roof whose remainder is not visible in the chip: unmeasurable counts as no contrast (strict)
+                    host_contrast = self._host_contrast(i_, gh, host) or 0.0
+        vals = {"area": area, "comp": None if pending else comp, "colour_frac": colour_frac, "colour_area": colour_area,
+                "green_frac": green_frac, "height": height, "bover": bover, "rect": rect, "host_cover": host_cover,
+                "host_contrast": host_contrast}
+        reasons = self._check_rules(oc, vals)
+        if alts:
+            alt_r = [self._check_rules(a, vals) for a in alts]
+            if all(alt_r):
+                reasons.append("none of: " + " | ".join("; ".join(r) for r in alt_r))
+        awaiting = pending and not reasons and bool(oc.get("require_outline"))
+        if awaiting:  # box rules passed, but this concept only counts objects whose outline passed the object check
+            reasons.append("awaiting SAM outline (box rules passed; counted only once the outline passes)")
         res = {"pass": not reasons, "reason": "; ".join(reasons) or "ok", "area_m2": round(area, 1),
-               "compactness": round(float(comp), 3), "colour_frac": None if colour_frac is None else round(colour_frac, 3),
+               "compactness": None if pending else round(float(comp), 3),
+               "colour_frac": None if colour_frac is None else round(colour_frac, 3),
                "colour_area_m2": None if colour_area is None else round(colour_area, 1),
+               "green_frac": None if green_frac is None else round(green_frac, 3),
                "height_m": None if height is None else round(height, 2),
                "building_overlap": None if bover is None else round(bover, 2), "refined": refined_geom is not None}
+        if rect is not None or host_cover is not None:
+            res.update(rectangularity=None if rect is None else round(rect, 3),
+                       host_cover=None if host_cover is None else round(host_cover, 3),
+                       host_contrast=None if host_contrast is None else round(host_contrast, 1))
+        if pending:
+            res["pending_box"] = True
+            if awaiting:
+                res["awaiting_outline"] = True
         if refined_geom is not None:
             res["geometry"] = refined_geom
         cache[key] = res
         return res
+
+    @staticmethod
+    def _check_rules(oc: dict[str, Any], v: dict[str, Any]) -> list[str]:
+        """Reasons an object fails one rule set (empty = pass). A measurement that is None (no lidar, no image, a
+        pending box's compactness) does not fail its rule: the rule is not applicable there."""
+        reasons = []
+        lo_a, hi_a = oc.get("area_m2", [0, 1e12])
+        if not (lo_a <= v["area"] <= hi_a):
+            reasons.append(f"area {v['area']:.0f} m² outside {lo_a}–{hi_a}")
+        if v["comp"] is not None and v["comp"] < oc.get("compactness_min", 0):
+            reasons.append(f"compactness {v['comp']:.2f} < {oc['compactness_min']}")
+        if v["colour_frac"] is not None and v["colour_frac"] < oc.get("colour_frac_min", 0):
+            reasons.append(f"colour {v['colour_frac']:.2f} < {oc['colour_frac_min']}")
+        if v["colour_area"] is not None and v["colour_area"] < oc.get("colour_area_min_m2", 0):
+            reasons.append(f"colour area {v['colour_area']:.0f} m² < {oc['colour_area_min_m2']}")
+        if v["green_frac"] is not None and oc.get("max_green_frac") is not None \
+                and v["green_frac"] > float(oc["max_green_frac"]):
+            reasons.append(f"{100 * v['green_frac']:.0f}% vegetation pixels > {100 * float(oc['max_green_frac']):.0f}%")
+        h = v["height"]
+        if h is not None and oc.get("max_height_m") is not None and h > float(oc["max_height_m"]):
+            reasons.append(f"height {h:.1f} m > {oc['max_height_m']} (lidar)")
+        if h is not None and oc.get("min_height_m") is not None and h < float(oc["min_height_m"]):
+            reasons.append(f"height {h:.1f} m < {oc['min_height_m']} (lidar)")
+        b = v["bover"]
+        if b is not None and oc.get("max_building_overlap") is not None and b > float(oc["max_building_overlap"]):
+            reasons.append(f"{100 * b:.0f}% on a building footprint (Overture)")
+        if b is not None and oc.get("min_building_overlap") is not None and b < float(oc["min_building_overlap"]):
+            reasons.append(f"only {100 * b:.0f}% on a building footprint (Overture) < {100 * float(oc['min_building_overlap']):.0f}%")
+        if v.get("rect") is not None and v["rect"] < oc.get("rectangularity_min", 0):
+            reasons.append(f"rectangularity {v['rect']:.2f} < {oc['rectangularity_min']}")
+        hc = v.get("host_cover")
+        if hc is not None and oc.get("max_host_cover") is not None and hc > float(oc["max_host_cover"]):
+            reasons.append(f"covers {100 * hc:.0f}% of its building footprint > {100 * float(oc['max_host_cover']):.0f}%")
+        hx = v.get("host_contrast")
+        if hx is not None and oc.get("min_host_contrast") is not None and hx < float(oc["min_host_contrast"]):
+            reasons.append(f"looks like the rest of its roof (contrast {hx:.0f} < {oc['min_host_contrast']})")
+        return reasons
 
     def place_bbox(self, place: str | None) -> list[float] | None:
         if not place:
@@ -794,6 +876,42 @@ class Engine:
         return float(sum(gm.intersection(bg[int(j)]).area for j in tree.query(gm, predicate="intersects"))
                      / max(gm.area, 1e-9))
 
+    def _host_geom(self, gm):
+        """The Overture footprint(s) a geometry (EPSG:32617) sits on, unioned: footprints whose overlap with it is
+        > 20% of the smaller of the two; None when it is on no footprint."""
+        from shapely.ops import unary_union
+
+        self._building_overlap(gm)  # fills the ~1 km tile cache for this location
+        c = gm.centroid
+        bg, tree = self.__dict__["_btiles"][(int(c.x // 1000), int(c.y // 1000))]
+        if tree is None:
+            return None
+        hosts = [bg[int(j)] for j in tree.query(gm, predicate="intersects")]
+        hosts = [h for h in hosts if gm.intersection(h).area > 0.2 * min(gm.area, h.area)]
+        return unary_union(hosts) if hosts else None
+
+    def _host_contrast(self, i: int, gm, host) -> float | None:
+        """Distance in (saturation, brightness) between the median pixel of a geometry and the median pixel of the rest
+        of its host footprint (1.2 m gap), on chip i's image. None when either side has too few pixels in the chip."""
+        from rasterio.features import rasterize
+        from rasterio.transform import from_origin
+
+        from groundtruth.rerank import _hsv
+
+        rest = host.difference(gm.buffer(1.2))
+        if rest.is_empty:
+            return None
+        img = np.asarray(Image.open(io.BytesIO(self.index.thumb_jpeg(i))).convert("RGB"))
+        x0, y0 = float(self.index.meta["x0_m"][i]), float(self.index.meta["y0_m"][i])
+        tr = from_origin(x0, y0 + config.CHIP_M, config.GSD_M, config.GSD_M)
+        mo = rasterize([gm], out_shape=img.shape[:2], transform=tr) > 0
+        mr = rasterize([rest], out_shape=img.shape[:2], transform=tr) > 0
+        if mo.sum() < 5 or mr.sum() < 20:
+            return None
+        hsv = _hsv(img)
+        so, sr = np.median(hsv[mo][:, 1:], 0), np.median(hsv[mr][:, 1:], 0)
+        return float(np.hypot(*(so - sr)))
+
     def _object_feature(self, i: int, cell: int, patch: int | None, score: float, rank: int, concept: str | None,
                         base_conf: float, extra: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any] | None]:
         """Feature for one detected object: outline + object check when cached, else its patch/cell box."""
@@ -816,8 +934,16 @@ class Engine:
         else:
             bb = self._patch_box_wgs84(i, patch) if patch is not None else p["cell_bbox"]
             f["geometry"] = mapping(sbox(*bb))
-            p.update(geometry_kind="box", area_m2=None, area_acres=None, object_check=None,
-                     confidence=round(base_conf * 0.85, 3))
+            # concepts with "verify_pending" check the box now (location/colour rules), before any SAM outline exists;
+            # area = the scan's connected patch group (n_patches × patch area), else the box
+            pa = (config.CHIP_M / 16) ** 2 if patch is not None else to_measure(sbox(*bb)).area
+            box_ol = {"id": ex_id, "geometry": f["geometry"],
+                      "properties": {"chip_id": self.index.ids[i], "patch": patch, "pending_box": True,
+                                     "area_m2": float(extra.get("n_patches") or 1) * pa}}
+            chk = self.object_check(box_ol, concept)
+            p.update(geometry_kind="box", area_m2=None, area_acres=None,
+                     object_check=None if chk is None else dict(chk),
+                     confidence=round(base_conf * 0.85 * (1.0 if chk is None or chk["pass"] else 0.0), 3))
         f["id"] = ex_id
         return f, chk
 
@@ -867,14 +993,18 @@ class Engine:
             q = self._outline_worker() if outline_top else None
             scores = [f["properties"]["score"] for f in feats] or [0]
             s_hi, s_lo = max(scores), min(scores)
-            out, polys, rejected, n_queued = [], [], 0, 0
+            out, polys, rejected, n_queued, awaiting = [], [], 0, 0, 0
             for r, f in enumerate(feats):
                 p = f["properties"]
                 i, c = self.index.pos[p["chip_id"]], p["cell"]
                 rel = float(np.clip((p["score"] - s_lo) / max(s_hi - s_lo, 1e-6), 0, 1))
                 feat, chk = self._object_feature(i, c, None, p["score"], r + 1, concept, rel, {})
-                if q is not None and chk is None and r < outline_top and (i, c, None) not in self._queued:
+                todo = chk is None or (chk.get("pending_box") and (chk["pass"] or chk.get("awaiting_outline")))
+                if q is not None and todo and r < outline_top and (i, c, None) not in self._queued:
                     self._queued.add((i, c, None)); q.put((i, c, None)); n_queued += 1
+                if chk is not None and chk.get("awaiting_outline"):  # box rules passed; counted once outlined
+                    awaiting += 1
+                    continue
                 if chk is not None and not chk["pass"]:
                     rejected += 1
                     continue
@@ -887,7 +1017,7 @@ class Engine:
                 out.append(feat)
         for r, f in enumerate(out):
             f["properties"]["rank"] = r + 1
-        metrics = self._object_metrics(out, rejected, n_queued, bbox, place, concept)
+        metrics = self._object_metrics(out, rejected, n_queued, bbox, place, concept, awaiting)
         metrics.update(mode="ranked_top_k", confidence_cut=conf_cut)
         limits = self._limits() + [
             f"County-wide mode: only the top {k} ranked matches are examined, so this is NOT an exhaustive count; "
@@ -905,11 +1035,15 @@ class Engine:
         return round(float(np.mean(cs)), 3) if cs else None
 
     @staticmethod
-    def _object_metrics(out: Sequence[dict[str, Any]], rejected: int, queued: int, bbox, place, concept) -> dict[str, Any]:
+    def _object_metrics(out: Sequence[dict[str, Any]], rejected: int, queued: int, bbox, place, concept,
+                        awaiting: int = 0) -> dict[str, Any]:
+        """awaiting = boxes that passed a require_outline concept's box rules but are not counted until outlined
+        (included in pending_outline so a partial result is never memoised as final)."""
         areas = [f["properties"]["area_m2"] for f in out if f["properties"].get("area_m2")]
         tot = float(sum(areas))
         return {"count_detected": len(out), "outlined": sum(1 for f in out if f["properties"]["geometry_kind"] == "outline"),
-                "pending_outline": sum(1 for f in out if f["properties"]["geometry_kind"] != "outline"),
+                "pending_outline": sum(1 for f in out if f["properties"]["geometry_kind"] != "outline") + awaiting,
+                "awaiting_outline_not_counted": awaiting,
                 "rejected_by_object_check": rejected, "outlines_queued": queued,
                 "area_m2_total": round(tot, 1), "area_acres_total": round(tot / SQM_PER_ACRE, 3),
                 "median_area_m2": round(float(np.median(areas)), 1) if areas else None,
@@ -978,14 +1112,18 @@ class Engine:
         smin = float(dconf["score_min"]) if "sim_min" not in dconf else 0.6 * float(dconf["sim_min"]) + 0.4 * float(dconf["colour_min"])
         with t.step("objects", f"outline/object check; queue top {min(outline_top, len(dets))} for SAM 2"):
             q = self._outline_worker() if outline_top else None
-            out, rejected, n_queued = [], 0, 0
+            out, rejected, n_queued, awaiting = [], 0, 0, 0
             for r, d in enumerate(dets):
                 base = float(np.clip(0.5 + (d.score - smin) / 0.3, 0, 1))
                 feat, chk = self._object_feature(d.row, d.cell, d.patch, d.score, r + 1, concept, base,
                                                  {"patch_sim": round(d.patch_sim, 4), "colour": round(d.colour, 3),
                                                   "n_patches": d.n_patches, "x_m": round(d.x_m, 2), "y_m": round(d.y_m, 2)})
-                if q is not None and chk is None and r < outline_top and (d.row, d.cell, d.patch) not in self._queued:
+                todo = chk is None or (chk.get("pending_box") and (chk["pass"] or chk.get("awaiting_outline")))
+                if q is not None and todo and r < outline_top and (d.row, d.cell, d.patch) not in self._queued:
                     self._queued.add((d.row, d.cell, d.patch)); q.put((d.row, d.cell, d.patch)); n_queued += 1
+                if chk is not None and chk.get("awaiting_outline"):  # box rules passed; counted once outlined
+                    awaiting += 1
+                    continue
                 if chk is not None and not chk["pass"]:
                     rejected += 1
                     continue
@@ -999,7 +1137,7 @@ class Engine:
                               f"the standard scan → {len(out)} objects")
         for r, f in enumerate(out):
             f["properties"]["rank"] = r + 1
-        metrics = self._object_metrics(out, rejected, n_queued, bbox, place, concept)
+        metrics = self._object_metrics(out, rejected, n_queued, bbox, place, concept, awaiting)
         metrics.update(mode="exhaustive_scan", **{k: v for k, v in info.items() if k != "device"}, device=info.get("device"))
         metrics["dense"] = dense_info is not None
         if dense_info:
@@ -1282,7 +1420,7 @@ class Engine:
                 else:
                     feat, chk = self._object_feature(i, c, p, prob, 0, concept, prob, extra)
                 if chk is not None and not chk["pass"]:
-                    rejected_check += 1
+                    rejected_check += 0 if chk.get("awaiting_outline") else 1  # awaiting: not counted, not rejected
                     continue
                 if prob < 0.5:
                     below += 1
@@ -1690,9 +1828,9 @@ class Engine:
             n_none = sum(1 for f in prim if f["properties"].get("canopy_over_pct") is None)
             info["canopy_unmeasured"] = n_none
             cb = R.conf()["canopy"]
-            info["_limits"].append(f"Canopy = lidar height ≥ {cb['min_height_m']} m (3DEP 2016) AND a green NAIP "
-                                   f"{cb['naip_year']} pixel (colour rule, no NDVI); trees grown or cut since 2016 are partly "
-                                   "missed. " + cb["buffer_note"])
+            info["_limits"].append(f"Canopy = lidar height ≥ {cb['min_height_m']} m (3DEP 2016) AND NAIP "
+                                   f"{cb['naip_year']} NDVI ≥ {cb['ndvi']['min']}, outside building footprints; trees grown since 2016 are missed, most cut since are dropped by NDVI. "
+                                   + cb["buffer_note"])
             if n_none:
                 info["_limits"].append(f"canopy_over_pct unmeasured for {n_none} objects (no lidar/canopy raster there)")
             info["_sources"] += self.risk_sources(["lidar", "canopy"])
@@ -1814,7 +1952,8 @@ class Engine:
             kind = fz.get("kind", "any") if isinstance(fz, dict) else (fz if isinstance(fz, str) else "any")
             k = p.get("flood_kind")
             ok = {"100yr": k == "100yr", "500yr": k in ("100yr", "500yr"), "500yr_only": k == "500yr",
-                  "any": k in ("100yr", "500yr"), "none": k is None and p.get("flood_covered", True)}.get(kind, False)
+                  "any": k in ("100yr", "500yr"), "none": k is None and p.get("flood_covered", True),
+                  "floodway": bool(p.get("flood_floodway"))}.get(kind, False)
             if not ok:
                 return False
         if where.get("within_m_of_shore") is not None:
